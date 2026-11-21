@@ -4,7 +4,7 @@
 import { LIVE_AUDIO } from '@/config/models';
 import type { Pcm } from '@/core/session';
 
-import type { AudioInput } from './types';
+import { ServiceError, type AudioInput } from './types';
 
 const PROCESSOR = 'vorp-pcm-capture';
 
@@ -56,9 +56,15 @@ export function createAudioInput(): AudioInput {
 
   async function start(context: AudioContext): Promise<Open> {
     // The context is created synchronously by open() so it stays inside the user gesture.
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
-    });
+    const stream = await navigator.mediaDevices
+      .getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+      })
+      .catch((err: unknown) => {
+        const name = err instanceof Error ? err.name : '';
+        const denied = name === 'NotAllowedError' || name === 'SecurityError';
+        throw new ServiceError(denied ? 'micDenied' : 'mic', err instanceof Error ? err.message : String(err));
+      });
     const url = URL.createObjectURL(new Blob([WORKLET_SOURCE], { type: 'application/javascript' }));
     try {
       await context.audioWorklet.addModule(url);

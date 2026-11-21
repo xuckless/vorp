@@ -1,13 +1,23 @@
 // The I/O interfaces. Platform and provider code implement these; nothing outside
 // src/services knows which implementation runs.
 
-import type { Participant, Pcm, UtteranceId } from '@/core/session';
+import type { Participant, Pcm, SessionErrorKind, SessionSettings, UtteranceId } from '@/core/session';
 
 export type Unsubscribe = () => void;
 
+/** A failure a service can name, so the runner turns it into the matching session event. */
+export class ServiceError extends Error {
+  readonly kind: SessionErrorKind;
+  constructor(kind: SessionErrorKind, message: string) {
+    super(message);
+    this.kind = kind;
+    this.name = 'ServiceError';
+  }
+}
+
 /** Microphone capture as 16 kHz mono 16-bit PCM, in about 100 ms chunks. */
 export interface AudioInput {
-  /** Must be called from a user gesture on web. Idempotent. */
+  /** Must be called from a user gesture on web. Idempotent. Rejects with a ServiceError. */
   open(): Promise<void>;
   close(): void;
   onChunk(listener: (pcm: Pcm) => void): Unsubscribe;
@@ -33,21 +43,31 @@ export interface AudioOutput {
 }
 
 export type TranslatorEvent =
-  | { type: 'inputTranscript'; text: string }
-  | { type: 'outputTranscript'; text: string }
+  /** The server's voice activity detection heard speech start / stop (hands-free only). */
+  | { type: 'speechStarted' }
+  | { type: 'speechEnded' }
+  /** `language` is the BCP-47 code the server detected, when it reports one. */
+  | { type: 'inputTranscript'; text: string; language?: string; finished?: boolean }
+  | { type: 'outputTranscript'; text: string; language?: string }
   | { type: 'outputAudio'; pcm: Pcm }
+  | { type: 'interrupted' }
   | { type: 'turnComplete' }
-  /** The connection ended without close() being called (drop, goAway, server close). */
-  | { type: 'closed'; reason: string };
+  /** The connection ended without close() being called: a drop, or goAway at the time limit. */
+  | { type: 'closed'; kind: 'socket' | 'timeLimit'; reason: string };
 
 /** A streaming speech-to-speech interpreter session. */
 export interface Translator {
-  /** Opens a session (resuming the previous one after a drop). Resolves once it is ready. */
-  connect(participants: readonly Participant[]): Promise<void>;
+  /**
+   * Opens a session (resuming the previous one after a drop). Resolves once it is ready;
+   * rejects with a ServiceError of kind 'token' or 'socket'.
+   */
+  connect(participants: readonly Participant[], settings: SessionSettings): Promise<void>;
   /** Ends the session for good; the next connect starts fresh. */
   close(): void;
+  /** A held talk button went down. Manual detection marks the turn start; auto does nothing. */
   beginTurn(): void;
   sendAudio(pcm: Pcm): void;
+  /** End the current turn now (button released, or the hands-free stream paused). */
   endTurn(): void;
   onEvent(listener: (e: TranslatorEvent) => void): Unsubscribe;
 }

@@ -211,11 +211,11 @@ redirects). The tables live in `src/config` (`models.ts`, `voices.ts`, `language
   output 16-bit LE mono PCM at 24 kHz, base64 in `serverContent.modelTurn.parts[].inlineData`.
 - **Transcripts**: `inputAudioTranscription: {}` and `outputAudioTranscription: {}` in the
   setup; read `serverContent.inputTranscription.text` / `outputTranscription.text`.
-- **Push-to-talk turns**: `realtimeInputConfig.automaticActivityDetection.disabled = true`, and
-  the client sends `activityStart` / `activityEnd` around the audio. Phase 2 turns automatic
-  detection back on for hands-free.
+- **Push-to-talk turns** (`detection: 'manual'`, the noisy-room fallback):
+  `automaticActivityDetection.disabled = true`, and the client sends `activityStart` /
+  `activityEnd` around the audio.
 - **Languages**: native-audio models pick the output language themselves (no `languageCode`);
-  the system instruction steers it. 70+ languages are listed.
+  the system instruction steers it. The capabilities page now lists 99 languages.
 - **Voices**: any of the 30 prebuilt TTS voices, via
   `speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName`. The interpreter uses one voice.
 - **Limits**: a connection lasts about 10 minutes; an audio-only session 15 minutes without
@@ -238,6 +238,54 @@ redirects). The tables live in `src/config` (`models.ts`, `voices.ts`, `language
 - TypeScript 6 includes no global `types` by default; test files start with
   `/// <reference types="bun" />` so Bun globals stay out of app code.
 
+### Hands-free turns (docs spike, 21 November 2026)
+
+Read from `aistudio.google.com/docs/live-api/capabilities`, `/session-management`,
+`/best-practices`, `/models/gemini-3.8-live` and `/api-reference/live`. None of it is verified
+against a live session yet (no key on the dev machine).
+
+- **The server's detection is used; no client-side VAD.** Automatic activity detection stays on
+  (`detection: 'auto'`, the default). End of turn is `silenceDurationMs: 700` (`LIVE_VAD` in
+  `models.ts`; the docs recommend 500–800 ms, server default about 800 ms). Sensitivities and
+  `prefixPaddingMs` stay at server defaults (the guide and the SDK describe `prefixPaddingMs`
+  differently).
+- **Barge-in is off by setting, not by workaround.** By default start of speech interrupts the
+  model (`START_OF_ACTIVITY_INTERRUPTS`: generation is cancelled and `interrupted` is sent).
+  `realtimeInputConfig.activityHandling = NO_INTERRUPTION` ("the model's response will not be
+  interrupted") gives the `queue` overlap policy; the translator maps the policy row to it. The
+  docs do not say how the model schedules the reply to speech that arrives during its own reply;
+  Vorp assumes replies come in input order, one `turnComplete` each.
+- **Push-to-talk inside hands-free is the docs' "hybrid VAD".** Activity signals are only for
+  manual detection, so a held button sends nothing at press and `audioStreamEnd` at release,
+  which the server treats as immediate end of turn. The button names the speaker. A pause longer
+  than the silence threshold while held can still end the server's turn early; the reducer then
+  opens a second utterance for the same held speaker.
+- **Pausing the stream** (`pauseMicWhileSpeaking`) sends `audioStreamEnd` too, as the docs ask
+  for any pause over a second.
+- **Language signal**: the reference documents `languageCode` (BCP-47) on
+  `BidiGenerateContentTranscription`, for input and output transcripts, and
+  `inputAudioTranscription.languageCodes` as hints (Vorp sends the participants' languages). The
+  guide pages never mention it, so whether `gemini-3.8-live` fills it is unverified. Routing:
+  held button, else input `languageCode`, else (two people) the participant whose language
+  differs from the output transcript's `languageCode`, else unknown. If neither is filled in
+  practice, the next step is a declared tool the model calls with the detected language.
+- **Speech start / end events**: the reference documents a top-level `voiceActivity`
+  (`type: ACTIVITY_START | ACTIVITY_END`); the SDK passes Gemini API messages through raw. If it
+  does not arrive, an utterance opens on its first input transcript and ends on the first model
+  output for it (or `turnComplete`).
+- **Transcript ordering**: input transcription has "no guaranteed ordering" with the rest. An
+  input transcript belongs to the utterance being captured, else the newest sent turn (this
+  fixed the phase 1 bug where it went to the oldest unanswered turn).
+- `gemini-3.8-live` has proactive audio permanently on (may choose not to answer) and no
+  affective dialogue; `turnComplete` with no output fails the utterance as "no translation".
+- **Time limits**: `goAway.timeLeft` warns before the ~10 minute connection ends "as ABORTED"; no
+  specific close code is documented for the session limit. Vorp treats `goAway` as the
+  `timeLimit` error kind and reconnects with the resumption handle.
+- **Error kinds** are data on the session: `micDenied`, `mic`, `token`, `socket`, `timeLimit`.
+  Services throw `ServiceError(kind)`; the runner maps it to `audioFailed`, `connectFailed` or
+  `connectionLost`.
+- The guide recommends 20–40 ms input chunks (100 ms is still within its "20–100 ms"); unchanged.
+
 ### Platforms
 
 - **Web is the demo target** and must be flawless. Android and iOS build from the same code and
@@ -256,10 +304,15 @@ redirects). The tables live in `src/config` (`models.ts`, `voices.ts`, `language
   and for participants who share a language.
 - **Overlap policy: keep talking, queue the next.** Vorp finishes the current translation while
   capturing new speech, then speaks the next one in order. The policy is a value in a table, so
-  ducking or barge-in can be added as rows.
+  ducking or barge-in can be added as rows (`OVERLAP_POLICIES` in `src/config/policies.ts`,
+  handed to the reducer in `SessionSettings`; `core` never imports config).
 - **Echo**: platform echo cancellation, plus a guard that drops a captured utterance whose
-  transcript matches what Vorp is speaking. `pauseMicWhileSpeaking` exists as an emergency flag,
-  off by default.
+  transcript matches what Vorp is speaking (60% of its words, `ECHO_MATCH`). The dropped
+  utterance stays in the response order so the model's reply to it is dropped too. Held-button
+  speech is never treated as echo. `pauseMicWhileSpeaking` exists as an emergency flag, off by
+  default.
+- **The microphone is derived state**: `micOpen(session)` decides whether audio flows, and
+  `transition` emits `startCapture` / `stopCapture` when it changes.
 - **One interpreter voice first.** The build-out uses a single Gemini voice and one Live session
   (owner, 21 November 2026). A voice per person is wanted but comes after everything else works;
   `Participant` carries a `voice` field from the start so adding it later is not a rewrite.

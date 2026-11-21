@@ -30,5 +30,6 @@ Rules:
 - Convey the meaning, tone and register of the speaker. Keep their person: "I" stays "I".
 - Do not add, drop, explain or summarise anything. Keep names, numbers and units exact.
 - Speak only the interpretation, in a natural spoken style, with nothing before or after it.
-- If you hear nothing intelligible, stay silent.`;
+- If you hear nothing intelligible, stay silent.
+- If you hear your own interpretation played back through the loudspeaker, stay silent.`;
 }

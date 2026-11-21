@@ -55,6 +55,18 @@ export const LIVE_AUDIO = {
   inputChunkMs: 100,
 } as const;
 
+/**
+ * Server voice activity detection for hands-free turns (docs: capabilities, "Understanding VAD
+ * parameters"). 500–800 ms of silence is the recommended end of turn; the server's own default
+ * is about 800 ms. Sensitivities stay at the server default (HIGH on the Gemini API).
+ * Tune by hand in the noisy-room test (phase 7).
+ */
+export const LIVE_VAD = {
+  silenceDurationMs: 700,
+  // prefixPaddingMs stays at the server default: the guide calls it look-back audio before
+  // speech, the SDK reference calls it speech required before start is committed.
+} as const;
+
 /** Limits from the session-management docs. Not enforced by tests. */
 export const LIVE_LIMITS = {
   /** Audio-only session without context compression. */

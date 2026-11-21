@@ -1,12 +1,22 @@
-// Bare phase 1 conversation screen: connect, two push-to-talk buttons, plain-text captions.
-// Renders from the session store; the only local state is the runtime handle.
+// Bare conversation screen: connect, hands-free by default with a hold-to-talk button per
+// person, the mode and the playback queue as plain text, plain-text captions. Renders from the
+// session store; the only local state is the runtime handle. Styling is phase 3.
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { DEFAULT_PARTICIPANTS } from '@/config/conversation';
 import { languageName } from '@/config/languages';
-import { capturingUtterance, type ConnectionStatus, type Session } from '@/core/session';
+import { DEFAULT_SETTINGS } from '@/config/policies';
+import {
+  capturingUtterance,
+  micOpen,
+  playbackQueue,
+  targetLanguages,
+  type ConnectionStatus,
+  type Session,
+  type SessionErrorKind,
+} from '@/core/session';
 import { createServices } from '@/services';
 
 import { createRuntime, type Runtime } from './runtime';
@@ -19,17 +29,39 @@ const CONNECTION_LABEL: Record<ConnectionStatus, string> = {
   failed: 'Retry',
 };
 
+const ERROR_LABEL: Record<SessionErrorKind, string> = {
+  micDenied: 'Microphone access was denied',
+  mic: 'Microphone failed',
+  token: 'Could not get a session token',
+  socket: 'Connection dropped',
+  timeLimit: 'Session time limit reached',
+};
+
+function modeText(s: Session): string {
+  const held = s.participants.find((p) => p.id === s.held);
+  if (held) return `Mode: held button (${held.name})`;
+  const mode = s.settings.detection === 'auto' ? 'hands-free' : 'push-to-talk only';
+  return `Mode: ${mode} · microphone ${micOpen(s) ? 'listening' : 'off'} · overlap: ${s.settings.overlap.id}`;
+}
+
+function queueText(s: Session): string {
+  const queue = playbackQueue(s);
+  if (queue.length === 0) return 'Queue: empty';
+  return `Queue: ${queue.map((u) => `${u.id} ${u.status}`).join(' → ')}`;
+}
+
 function useSession(runtime: Runtime): Session {
   return useSyncExternalStore(runtime.store.subscribe, runtime.store.get, runtime.store.get);
 }
 
 export function ConversationScreen() {
-  const [runtime] = useState(() => createRuntime(createServices(), DEFAULT_PARTICIPANTS));
+  const [runtime] = useState(() => createRuntime(createServices(), DEFAULT_PARTICIPANTS, DEFAULT_SETTINGS));
   useEffect(() => () => runtime.dispose(), [runtime]);
   const session = useSession(runtime);
   const { dispatch } = runtime;
   const capturing = capturingUtterance(session);
   const open = session.connection === 'open';
+  const { held } = session;
 
   return (
     <View style={styles.screen}>
@@ -43,15 +75,23 @@ export function ConversationScreen() {
           <Text style={styles.buttonText}>{CONNECTION_LABEL[session.connection]}</Text>
         </Pressable>
       </View>
-      {session.error ? <Text style={styles.error}>{session.error}</Text> : null}
+      {session.error ? (
+        <Text style={styles.error}>
+          {ERROR_LABEL[session.error.kind]}: {session.error.message}
+        </Text>
+      ) : null}
+      <Text style={styles.meta}>{modeText(session)}</Text>
+      <Text style={styles.meta}>{queueText(session)}</Text>
 
       <ScrollView style={styles.captions} contentContainerStyle={styles.captionsContent}>
         {session.utterances.map((u) => {
           const speaker = session.participants.find((p) => p.id === u.speakerId);
+          const targets = targetLanguages(session, u).map(languageName).join(', ');
           return (
             <View key={u.id} style={styles.caption}>
               <Text style={styles.meta}>
-                {speaker?.name ?? u.speakerId} · {u.status}
+                {u.id} · {speaker?.name ?? 'unknown speaker'} ({u.routedBy}
+                {u.language ? `, heard ${u.language}` : ''}){targets ? ` → ${targets}` : ''} · {u.status}
                 {u.error ? ` (${u.error})` : ''}
               </Text>
               <Text style={styles.source}>{u.source || '…'}</Text>
@@ -63,8 +103,9 @@ export function ConversationScreen() {
 
       <View style={styles.talkRow}>
         {session.participants.map((p) => {
-          const held = capturing?.speakerId === p.id;
-          const enabled = open && (capturing === undefined || held);
+          const holding = held === p.id;
+          const enabled = open && (held === undefined || holding);
+          const listening = holding || (capturing !== undefined && capturing.speakerId === p.id);
           return (
             <Pressable
               key={p.id}
@@ -73,9 +114,9 @@ export function ConversationScreen() {
               disabled={!enabled}
               onPressIn={() => dispatch({ type: 'pressTalk', speakerId: p.id })}
               onPressOut={() => dispatch({ type: 'releaseTalk', speakerId: p.id })}
-              style={[styles.talk, held && styles.talkHeld, !enabled && styles.talkDisabled]}
+              style={[styles.talk, holding && styles.talkHeld, !enabled && styles.talkDisabled]}
             >
-              <Text style={styles.talkText}>{held ? 'Listening…' : `Hold to talk`}</Text>
+              <Text style={styles.talkText}>{listening ? 'Listening…' : 'Hold to talk'}</Text>
               <Text style={styles.talkLanguage}>{languageName(p.language)}</Text>
             </Pressable>
           );

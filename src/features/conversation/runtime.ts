@@ -7,10 +7,13 @@ import {
   type Effect,
   type Participant,
   type Session,
+  type SessionErrorKind,
   type SessionEvent,
+  type SessionSettings,
 } from '@/core/session';
 import { createStore, type Store } from '@/core/store';
 import type { Services } from '@/services';
+import { ServiceError } from '@/services/types';
 
 export type Runtime = {
   store: Store<Session>;
@@ -20,10 +23,15 @@ export type Runtime = {
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-export function createRuntime(services: Services, participants: Participant[]): Runtime {
+/** The kind a service named, or the fallback for errors no service classified. */
+function kindOf<K extends SessionErrorKind>(err: unknown, allowed: readonly K[], fallback: K): K {
+  return err instanceof ServiceError && (allowed as readonly SessionErrorKind[]).includes(err.kind) ? (err.kind as K) : fallback;
+}
+
+export function createRuntime(services: Services, participants: Participant[], settings: SessionSettings): Runtime {
   const { input, output, translator } = services;
-  const store = createStore(initialSession(participants));
-  /** The live microphone-to-translator pipe while someone holds a talk button. */
+  const store = createStore(initialSession(participants, settings));
+  /** The live microphone-to-translator pipe while the reducer says the microphone is open. */
   let pipe: (() => void) | null = null;
 
   function dispatch(event: SessionEvent) {
@@ -35,9 +43,10 @@ export function createRuntime(services: Services, participants: Participant[]): 
   function run(effect: Effect) {
     switch (effect.type) {
       case 'connect':
-        translator.connect(effect.participants).then(
+        translator.connect(effect.participants, effect.settings).then(
           () => dispatch({ type: 'connected' }),
-          (err: unknown) => dispatch({ type: 'connectFailed', error: message(err) }),
+          (err: unknown) =>
+            dispatch({ type: 'connectFailed', kind: kindOf(err, ['token', 'socket'], 'socket'), message: message(err) }),
         );
         return;
       case 'disconnect':
@@ -46,7 +55,7 @@ export function createRuntime(services: Services, participants: Participant[]): 
       case 'openAudio':
         // Both opens start synchronously inside the user gesture.
         Promise.all([input.open(), output.open()]).catch((err: unknown) =>
-          dispatch({ type: 'captureFailed', error: `audio: ${message(err)}` }),
+          dispatch({ type: 'audioFailed', kind: kindOf(err, ['micDenied', 'mic'], 'mic'), message: `audio: ${message(err)}` }),
         );
         return;
       case 'closeAudio':
@@ -82,7 +91,7 @@ export function createRuntime(services: Services, participants: Participant[]): 
   // The subscriptions live as long as the runtime; dispose only ends the conversation, so a
   // React effect that runs twice in development can restart it.
   translator.onEvent((e) =>
-    dispatch(e.type === 'closed' ? { type: 'connectionLost', reason: e.reason } : e),
+    dispatch(e.type === 'closed' ? { type: 'connectionLost', kind: e.kind, message: e.reason } : e),
   );
   output.onEvent((e) =>
     dispatch(

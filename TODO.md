@@ -49,15 +49,25 @@ Spikes come first; they decide open points in `AGENTS.md`. Throwaway code is fin
 
 ## Phase 2: Asynchronous and hands-free (Mon 23)
 
-- [ ] Playback queue in the reducer: utterances speak in order while capture continues
-- [ ] Reducer tests: speech during playback, three utterances in flight, a failure mid-queue
+Built and tested offline with reducer and runner tests; nothing here has met a real Live
+session yet (no key). Findings are under "Hands-free turns" in `AGENTS.md`.
+
+- [x] Playback queue in the reducer: utterances speak in order while capture continues
+- [x] Reducer tests: speech during playback, three utterances in flight, a failure mid-queue
 - [ ] Voice activity detection ends the turn (Live API's own first; client-side only if needed)
-- [ ] Language detection routes the utterance: speaker identity and target language
-- [ ] Echo guard: drop captured utterances whose transcript matches the one being spoken
-- [ ] `pauseMicWhileSpeaking` emergency flag
-- [ ] Push-to-talk stays as a fallback and overrides detection while held
-- [ ] Overlap policy as a table row (`queue`), with the reducer reading the policy
-- [ ] Error paths as events: microphone denied, token failure, socket drop, session time limit
+      (server detection with `NO_INTERRUPTION` wired; unverified without a key)
+- [ ] Language detection routes the utterance: speaker identity and target language (routes on
+      the transcript's `languageCode`, output language as fallback; unverified that
+      `gemini-3.8-live` fills it)
+- [x] Echo guard: drop captured utterances whose transcript matches the one being spoken
+- [x] `pauseMicWhileSpeaking` emergency flag
+- [ ] Push-to-talk stays as a fallback and overrides detection while held (built: button names
+      the speaker, release sends `audioStreamEnd`; unverified without a key)
+- [x] Overlap policy as a table row (`queue`), with the reducer reading the policy
+- [x] Error paths as events: microphone denied, token failure, socket drop, session time limit
+- [x] Input transcripts attach to the utterance being captured, not the oldest unanswered one
+      (phase 1 gap)
+- [x] Bare screen shows the mode (hands-free or held button) and the queue as plain text
 - [ ] **Milestone: hands-free two-way conversation on web, listening while speaking**
 
 ## Phase 3: Design system and effects (Tue 24)
