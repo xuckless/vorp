@@ -8,11 +8,15 @@ mode applies: reach breadth first, harden in phase 7.
 
 - [x] `AGENTS.md`, `.gitignore`, `LICENSE` (Apache-2.0), git repository
 - [x] Design interview; decisions recorded in `AGENTS.md`
-- [ ] First commit; create the public GitHub repository `xuckless/vorp`
-- [ ] Scaffold Expo (TypeScript, Expo Router) with Bun; confirm web, Android and iOS all start
-- [ ] Folder layout from `AGENTS.md`: `app/`, `src/{core,services,features,ui,config}`, `server/`
-- [ ] Strict TypeScript, path aliases, ESLint with an import-boundary rule (`core` imports nothing
-      outward), Prettier
+- [x] First commit
+- [ ] Create the public GitHub repository `xuckless/vorp` and push
+- [x] Scaffold Expo SDK 58 (TypeScript, Expo Router) with Bun; web export builds and renders
+- [ ] Confirm Android and iOS start (needs a device or emulator)
+- [ ] Folder layout from `AGENTS.md`: `src/{app,core,services,features,ui,config}`, `server/`
+      (`src/app` exists; the rest arrive with their first file)
+- [x] Strict TypeScript, `@/` path alias, ESLint (Expo config)
+- [ ] ESLint import-boundary rule (`core` imports nothing outward); Prettier
+- [ ] Replace the placeholder Expo icons and splash image with Vorp's own
 - [ ] `bun test` running with one passing reducer test
 - [ ] `THIRD_PARTY_NOTICES.md` with the first entries
 - [ ] `.env.example`; `README.md` stub

@@ -30,16 +30,39 @@ decision changes, change it here in the same commit as the code.
   prompts are data in one config module, never string literals in feature code.
 - Real-time audio needs native modules, so native runs in a development build, not Expo Go.
 
+### Commands
+
+```bash
+bun install                  # install dependencies
+bun run web                  # dev server in the browser (also: android, ios)
+bun run lint                 # ESLint
+bun run typecheck            # tsc --noEmit
+bun test                     # unit tests
+bun run export:web           # static web build into dist/
+bunx expo install <package>  # add a dependency at the version this Expo SDK expects
+bunx expo-doctor             # check dependency and config health
+```
+
+Run lint and typecheck before calling a task done. Add packages with `bunx expo install`, not
+`bun add`. Expo changes between SDK releases: read the versioned docs for the `expo` major in
+`package.json` (`https://docs.expo.dev/versions/v<major>.0.0/`) instead of relying on memory.
+`android/` and `ios/` are generated; configure native behaviour in `app.json`.
+
+The web build is a single-page app (`web.output: "single"`), because the app is all client-side
+audio and canvas and is served as static files by the token server.
+
 ## Architecture
 
 ```
-app/            routes only: compose features, no logic
+src/app/        routes only (Expo Router): compose features, no logic
 src/core/       pure domain: types, the session reducer, effects as data. No React, no I/O.
 src/services/   I/O behind interfaces: audio capture, audio playback, translator, storage
 src/features/   screens and their view models (setup, conversation, settings)
 src/ui/         design system: tokens, primitives, slots, effects
 src/config/     data tables: languages, voices, models, feature flags, policies
 ```
+
+`server/` (the token server) sits at the repository root, outside the app.
 
 Dependencies point inward: `app → features → ui / services → core`. `core` imports nothing from
 the other folders.
