@@ -17,7 +17,7 @@ mode applies: reach breadth first, harden in phase 7.
 - [x] Strict TypeScript, `@/` path alias, ESLint (Expo config)
 - [ ] ESLint import-boundary rule (`core` imports nothing outward); Prettier
 - [ ] Replace the placeholder Expo icons and splash image with Vorp's own
-- [ ] `bun test` running with one passing reducer test
+- [x] `bun test` running with one passing reducer test
 - [ ] `THIRD_PARTY_NOTICES.md` with the first entries
 - [ ] `.env.example`; `README.md` stub
 
@@ -25,25 +25,26 @@ mode applies: reach breadth first, harden in phase 7.
 
 Spikes come first; they decide open points in `AGENTS.md`. Throwaway code is fine here.
 
-- [ ] Spike: read the current Gemini Live API docs. Record the model id, audio formats, supported
+- [x] Spike: read the current Gemini Live API docs. Record the model id, audio formats, supported
       languages and voices, session limits and the short-lived token flow in `src/config`
 - [ ] Spike: browser page that streams the microphone to a Live session and plays translated
       audio back, English ↔ French, with both transcripts
 - [ ] Spike: does the model report the detected input language reliably enough to pick the
       speaker?
 - [ ] Token server in `server/` with Anole: `POST /token` returns a short-lived Live token; the
-      key comes from the environment; runs locally
-- [ ] `src/core`: `Participant`, `Utterance`, `Session` types; the utterance lifecycle enum
-- [ ] `src/core`: `transition(state, event) -> [state, effects]` with tests for the basic turn
-- [ ] Effect runner: executes effects, feeds results back as events
-- [ ] `AudioInput` interface and web implementation (AudioWorklet, 16 kHz PCM, echo cancellation
+      key comes from the environment; runs locally (built and run on Zig 0.17.0; reaches Google,
+      which rejected a fake key; not yet tried with a real key)
+- [x] `src/core`: `Participant`, `Utterance`, `Session` types; the utterance lifecycle enum
+- [x] `src/core`: `transition(state, event) -> [state, effects]` with tests for the basic turn
+- [x] Effect runner: executes effects, feeds results back as events
+- [x] `AudioInput` interface and web implementation (AudioWorklet, 16 kHz PCM, echo cancellation
       on)
 - [ ] `AudioOutput` interface and web implementation (gapless PCM playback queue, output level
-      tap for the visualiser)
+      tap for the visualiser) (written; never heard real model audio)
 - [ ] `Translator` interface and Gemini Live implementation (connect, stream, transcripts,
-      reconnect with a fresh token)
-- [ ] Interpreter system prompt, built from the participants table
-- [ ] Bare screen: two push-to-talk buttons, captions as plain text. **Milestone: a two-way
+      reconnect with a fresh token) (written on `@google/genai`; needs a real key to verify)
+- [x] Interpreter system prompt, built from the participants table
+- [ ] Bare screen: two push-to-talk buttons, captions as plain text (built; renders on web). **Milestone: a two-way
       conversation works on web**
 
 ## Phase 2: Asynchronous and hands-free (Mon 23)

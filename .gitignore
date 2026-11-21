@@ -29,3 +29,8 @@ expo-env.d.ts
 .metro-health-check*
 npm-debug.*
 .DS_Store
+
+# token server (Zig)
+server/.zig-cache/
+server/zig-out/
+server/zig-pkg/

@@ -1,0 +1,13 @@
+.{
+    .name = .vorp_token,
+    .version = "0.1.0",
+    .fingerprint = 0xfdd7791e6b5a0d7e,
+    .minimum_zig_version = "0.17.0",
+    .dependencies = .{
+        .anole = .{
+            .url = "git+https://github.com/xuckless/anole?ref=v0.6.0#4f3ebd1e43d8e5b1a7f8459cdb10442400e9fcb3",
+            .hash = "anole-0.6.0-WO_-F_BWLgF0NrrpG4YNy8TUp0wfZ2o-G18KRFXQTFi3",
+        },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "src" },
+}

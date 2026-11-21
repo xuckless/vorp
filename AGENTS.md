@@ -41,7 +41,11 @@ bun test                     # unit tests
 bun run export:web           # static web build into dist/
 bunx expo install <package>  # add a dependency at the version this Expo SDK expects
 bunx expo-doctor             # check dependency and config health
+bun run token-server         # Anole token server on :8787 (needs Zig 0.17 and GEMINI_API_KEY)
 ```
+
+For local development, copy `.env.example` to `.env`, export `GEMINI_API_KEY` for the token
+server, and set `EXPO_PUBLIC_TOKEN_URL=http://localhost:8787/token` for the dev app.
 
 Run lint and typecheck before calling a task done. Add packages with `bunx expo install`, not
 `bun add`. Expo changes between SDK releases: read the versioned docs for the `expo` major in
@@ -185,6 +189,47 @@ From the design interview with the owner on 21 November 2026.
   behind TLS (the browser microphone requires HTTPS).
 - The token endpoint is public, so it is rate-limited, issues single-session tokens with a short
   expiry, and the key carries a spend cap.
+
+### Gemini Live (docs spike, 21 November 2026)
+
+Read from `aistudio.google.com/docs/live-api` (where `ai.google.dev/gemini-api/docs/live` now
+redirects). The tables live in `src/config` (`models.ts`, `voices.ts`, `languages.ts`).
+
+- **Model: `gemini-3.8-live`** for the interpreter, in one session with a system instruction.
+  Google also ships **`gemini-3.5-live-translate-preview`**, a dedicated speech-to-speech
+  translator, but it takes one `targetLanguageCode` per session, has no voice selection and no
+  tools, so two-way would need one session per target language. Not used for now; it is the
+  first thing to try if `3.8-live` answers instead of interpreting.
+- **Audio**: input raw 16-bit LE mono PCM at 16 kHz (`audio/pcm;rate=16000`, ~100 ms chunks);
+  output 16-bit LE mono PCM at 24 kHz, base64 in `serverContent.modelTurn.parts[].inlineData`.
+- **Transcripts**: `inputAudioTranscription: {}` and `outputAudioTranscription: {}` in the
+  setup; read `serverContent.inputTranscription.text` / `outputTranscription.text`.
+- **Push-to-talk turns**: `realtimeInputConfig.automaticActivityDetection.disabled = true`, and
+  the client sends `activityStart` / `activityEnd` around the audio. Phase 2 turns automatic
+  detection back on for hands-free.
+- **Languages**: native-audio models pick the output language themselves (no `languageCode`);
+  the system instruction steers it. 70+ languages are listed.
+- **Voices**: any of the 30 prebuilt TTS voices, via
+  `speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName`. The interpreter uses one voice.
+- **Limits**: a connection lasts about 10 minutes; an audio-only session 15 minutes without
+  context compression. The app turns on `contextWindowCompression.slidingWindow` and session
+  resumption (handles valid 2 h), and reconnects on `goAway` or a drop with a fresh token.
+- **Ephemeral tokens**: the server `POST`s `/v1beta/auth_tokens` with `x-goog-api-key`; the
+  token is the response's `name` (`auth_tokens/...`). Defaults: `uses: 1`, 30 min expiry
+  (max under 20 h), 60 s to start a session; resuming does not count as a use. Tokens work
+  only on `v1beta`. The browser passes the token as the SDK's `apiKey`, which switches it to the
+  `BidiGenerateContentConstrained` endpoint with `access_token`.
+- **Client library**: the official `@google/genai` SDK (Apache-2.0) works in the browser under
+  Metro (its `browser` export is picked; web export verified), so the socket is not hand-rolled.
+- **Token server**: `server/` depends on Anole `v0.6.0` (git URL in `build.zig.zon`) and needs
+  **Zig 0.17.0**; Zig 0.16 cannot build Anole. `POST /token` sends `{"uses":1}` and keeps
+  Google's expiry defaults, answers `{token, expireTime}` with `Cache-Control: no-store`, and
+  allows any CORS origin for the dev server. Not yet: rate limit, locking the token to the model
+  (`bidiGenerateContentSetup` / `fieldMask`), serving `dist/`.
+- Platform split: implementations are `*.web.ts` / `*.native.ts`; `tsconfig` sets
+  `moduleSuffixes: [".web", ""]` so `tsc` resolves the web file and checks both.
+- TypeScript 6 includes no global `types` by default; test files start with
+  `/// <reference types="bun" />` so Bun globals stay out of app code.
 
 ### Platforms
 
