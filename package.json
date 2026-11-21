@@ -13,7 +13,8 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "token-server": "cd server && zig build run"
+    "token-server": "zig build --build-file server/build.zig run",
+    "test:server": "cd server && zig build test"
   },
   "dependencies": {
     "@google/genai": "^3.6.1",

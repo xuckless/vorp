@@ -111,8 +111,9 @@ Spikes come first; they decide open points in `AGENTS.md`. Throwaway code is fin
 
 ## Phase 6: Deploy and native (Thu 26, afternoon)
 
-- [ ] `expo export` for web; the Anole server serves the static build and `/token`
-- [ ] Token endpoint: rate limit, short expiry, single-session tokens; spend cap on the key
+- [x] `expo export` for web; the Anole server serves the static build (`WEB_DIR`) and `/token`
+- [x] Token endpoint: rate limit per client, short expiry, single-session tokens
+- [ ] Spend cap on the Gemini key (Google Cloud console)
 - [ ] GCE instance, domain, TLS certificate, service unit, deploy script
 - [ ] Native `AudioInput` / `AudioOutput` implementations (voice-communication mode for echo
       cancellation)

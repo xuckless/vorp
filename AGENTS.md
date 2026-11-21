@@ -38,6 +38,8 @@ bun run web                  # dev server in the browser (also: android, ios)
 bun run lint                 # ESLint
 bun run typecheck            # tsc --noEmit
 bun test                     # unit tests
+bun run token-server         # the Anole token server on :8787 (needs Zig 0.17; reads .env)
+bun run test:server          # the token server's routes, in memory
 bun run export:web           # static web build into dist/
 bunx expo install <package>  # add a dependency at the version this Expo SDK expects
 bunx expo-doctor             # check dependency and config health
@@ -187,6 +189,11 @@ From the design interview with the owner on 21 November 2026.
   It holds the Gemini key and issues short-lived Live API tokens to the app. It also serves the
   exported web app, so the demo is one origin with no CORS. It runs on **Google Compute Engine**
   behind TLS (the browser microphone requires HTTPS).
+- **Use what Anole ships; hand-roll nothing in `server/`.** Settings come from
+  `anole.config.load` (typed, `.env` in development, `anole.Secret` for the key), limits from
+  `anole.ratelimit`, probes from `app.health`, plus its CORS, request ids, access log, static
+  files, outbound client and `anole.testing` client. Anole's docs for the pinned version are
+  its `templates/` and source under `server/zig-pkg/`; the local checkout may be older.
 - The token endpoint is public, so it is rate-limited, issues single-session tokens with a short
   expiry, and the key carries a spend cap.
 
