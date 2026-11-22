@@ -94,6 +94,8 @@ export type SessionEvent =
   | { type: 'speechEnded' }
   | { type: 'inputTranscript'; text: string; language?: string; finished?: boolean }
   | { type: 'outputTranscript'; text: string; language?: string }
+  /** The interpreter reports the language of the utterance it is answering. */
+  | { type: 'sourceLanguage'; language: string }
   | { type: 'outputAudio'; pcm: Pcm }
   | { type: 'interrupted' }
   | { type: 'turnComplete' }
@@ -348,6 +350,13 @@ function step(s: Session, e: SessionEvent): Transition {
         ...routeByOutput(v, s.participants, e.language),
       }));
       return [next, []];
+    }
+
+    case 'sourceLanguage': {
+      // Part of the model's reply, so it belongs to the utterance being answered.
+      const u = find(s, headId(s));
+      if (u === undefined || u.status === 'failed') return [s, []];
+      return [patch(s, u.id, (v) => routeByInput(v, s.participants, e.language)), []];
     }
 
     case 'outputAudio': {

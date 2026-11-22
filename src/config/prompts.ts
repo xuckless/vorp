@@ -6,6 +6,26 @@ import type { Participant } from '@/core/session';
 
 import { languageName } from './languages';
 
+/**
+ * The function the interpreter calls to say which language it just heard. gemini-3.8-live sends
+ * no language code on transcripts (verified 21 November 2026), and the model is the one that
+ * knows; identifying short phrases from text ("Merci beaucoup") is unreliable.
+ */
+export const LANGUAGE_TOOL = 'report_language';
+
+/** Plain JSON schema for the declaration; the translator hands it to the Live API as is. */
+export function languageTool(participants: readonly Participant[]) {
+  return {
+    name: LANGUAGE_TOOL,
+    description: 'Report the language the speaker just used. Call it once for every utterance, before you interpret it.',
+    parametersJsonSchema: {
+      type: 'object',
+      properties: { language: { type: 'string', enum: [...new Set(participants.map((p) => p.language))] } },
+      required: ['language'],
+    },
+  };
+}
+
 export function interpreterPrompt(participants: readonly Participant[]): string {
   const people = participants.map((p) => `- ${p.name} speaks ${languageName(p.language)}.`).join('\n');
   const languages = [...new Set(participants.map((p) => languageName(p.language)))];
@@ -31,5 +51,6 @@ Rules:
 - Do not add, drop, explain or summarise anything. Keep names, numbers and units exact.
 - Speak only the interpretation, in a natural spoken style, with nothing before or after it.
 - If you hear nothing intelligible, stay silent.
-- If you hear your own interpretation played back through the loudspeaker, stay silent.`;
+- If you hear your own interpretation played back through the loudspeaker, stay silent.
+- For every utterance, first call ${LANGUAGE_TOOL} with the language the speaker used, then speak the interpretation as soon as the call returns. Never mention the call.`;
 }

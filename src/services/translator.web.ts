@@ -16,7 +16,7 @@ import {
 } from '@google/genai';
 
 import { INTERPRETER_MODEL, LIVE_API_VERSION, LIVE_AUDIO, LIVE_VAD } from '@/config/models';
-import { interpreterPrompt } from '@/config/prompts';
+import { LANGUAGE_TOOL, interpreterPrompt, languageTool } from '@/config/prompts';
 import { INTERPRETER_VOICE } from '@/config/voices';
 import type { SessionSettings, TurnDetection } from '@/core/session';
 
@@ -49,6 +49,8 @@ export function createTranslator(): Translator {
   let generation = 0;
   let resumeHandle: string | undefined;
   let detection: TurnDetection = 'auto';
+  /** Tool-call turns whose turnComplete has not arrived yet. */
+  let toolTurns = 0;
 
   const emit = (e: TranslatorEvent) => listeners.forEach((l) => l(e));
 
@@ -67,6 +69,20 @@ export function createTranslator(): Translator {
     const activity = voiceActivity(msg);
     if (activity === 'ACTIVITY_START') emit({ type: 'speechStarted' });
 
+    const calls = msg.toolCall?.functionCalls ?? [];
+    if (calls.length > 0) {
+      for (const call of calls) {
+        const language = call.name === LANGUAGE_TOOL ? call.args?.language : undefined;
+        if (typeof language === 'string') emit({ type: 'sourceLanguage', language });
+      }
+      // The model speaks the interpretation once the call returns. The call ends a model turn
+      // of its own, whose turnComplete is not the end of the reply.
+      toolTurns++;
+      live?.sendToolResponse({
+        functionResponses: calls.map((call) => ({ id: call.id, name: call.name, response: { result: 'ok' } })),
+      });
+    }
+
     const content = msg.serverContent;
     if (content) {
       const input = content.inputTranscription;
@@ -80,7 +96,10 @@ export function createTranslator(): Translator {
         if (data && part.inlineData?.mimeType?.startsWith('audio/')) emit({ type: 'outputAudio', pcm: base64ToPcm(data) });
       }
       if (content.interrupted) emit({ type: 'interrupted' });
-      if (content.turnComplete) emit({ type: 'turnComplete' });
+      if (content.turnComplete) {
+        if (toolTurns > 0) toolTurns--;
+        else emit({ type: 'turnComplete' });
+      }
     }
 
     if (activity === 'ACTIVITY_END') emit({ type: 'speechEnded' });
@@ -98,6 +117,7 @@ export function createTranslator(): Translator {
       const mine = ++generation;
       dropCurrent();
       detection = settings.detection;
+      toolTurns = 0;
       const token = await fetchLiveToken().then(
         (t) => t.token,
         (err: unknown) => {
@@ -119,6 +139,7 @@ export function createTranslator(): Translator {
         config: {
           responseModalities: [Modality.AUDIO],
           systemInstruction: interpreterPrompt(participants),
+          tools: [{ functionDeclarations: [languageTool(participants)] }],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: INTERPRETER_VOICE } } },
           // The participants' languages as hints; the transcript reports the detected one.
           inputAudioTranscription: { languageCodes: [...new Set(participants.map((p) => p.language))] },

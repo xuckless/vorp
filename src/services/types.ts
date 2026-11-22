@@ -49,6 +49,8 @@ export type TranslatorEvent =
   /** `language` is the BCP-47 code the server detected, when it reports one. */
   | { type: 'inputTranscript'; text: string; language?: string; finished?: boolean }
   | { type: 'outputTranscript'; text: string; language?: string }
+  /** The model's own report of the language it is interpreting from (BCP-47, a participant's). */
+  | { type: 'sourceLanguage'; language: string }
   | { type: 'outputAudio'; pcm: Pcm }
   | { type: 'interrupted' }
   | { type: 'turnComplete' }

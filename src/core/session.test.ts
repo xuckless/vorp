@@ -250,6 +250,29 @@ describe('hands-free (automatic detection)', () => {
     expect(s.utterances[0]).toMatchObject({ speakerId: 'a', status: 'translating', source: 'Hello' });
   });
 
+  test("the interpreter's own language report names the speaker of the utterance being answered", () => {
+    const [s] = run(
+      [
+        ...open,
+        { type: 'speechStarted' },
+        { type: 'inputTranscript', text: 'Merci beaucoup' },
+        { type: 'speechEnded' },
+        { type: 'sourceLanguage', language: 'fr' },
+      ],
+      freshHandsFree(),
+    );
+    expect(s.utterances).toHaveLength(1);
+    expect(s.utterances[0]).toMatchObject({ speakerId: 'b', language: 'fr', status: 'translating' });
+  });
+
+  test('a language report does not override a held button', () => {
+    const [s] = run(
+      [...open, { type: 'pressTalk', speakerId: 'a' }, { type: 'inputTranscript', text: 'Bonjour' }, { type: 'sourceLanguage', language: 'fr' }],
+      freshHandsFree(),
+    );
+    expect(s.utterances[0]).toMatchObject({ speakerId: 'a', routedBy: 'button' });
+  });
+
   test('without an input language, the output language names the speaker (two people)', () => {
     const [s] = run(
       [...open, { type: 'speechStarted' }, { type: 'inputTranscript', text: 'Hello' }, { type: 'outputTranscript', text: 'Bonjour', language: 'fr' }],

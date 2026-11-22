@@ -16,7 +16,8 @@ class PcmCapture extends AudioWorkletProcessor {
     super();
     const { targetRate, chunkSamples } = options.processorOptions;
     this.step = sampleRate / targetRate;
-    this.chunk = new Int16Array(chunkSamples);
+    this.size = chunkSamples;
+    this.chunk = new Int16Array(this.size);
     this.filled = 0;
     this.phase = 0;
     this.sum = 0;
@@ -35,9 +36,10 @@ class PcmCapture extends AudioWorkletProcessor {
         this.sum = 0;
         this.count = 0;
         this.chunk[this.filled++] = v < 0 ? v * 0x8000 : v * 0x7fff;
-        if (this.filled === this.chunk.length) {
+        if (this.filled === this.size) {
+          // Transferring detaches the buffer (its length becomes 0), so the size is kept apart.
           this.port.postMessage(this.chunk, [this.chunk.buffer]);
-          this.chunk = new Int16Array(this.chunk.length);
+          this.chunk = new Int16Array(this.size);
           this.filled = 0;
         }
       }
