@@ -31,9 +31,8 @@ Spikes come first; they decide open points in `AGENTS.md`. Throwaway code is fin
       audio back, English ↔ French, with both transcripts
 - [ ] Spike: does the model report the detected input language reliably enough to pick the
       speaker?
-- [ ] Token server in `server/` with Anole: `POST /token` returns a short-lived Live token; the
-      key comes from the environment; runs locally (built and run on Zig 0.17.0; reaches Google,
-      which rejected a fake key; not yet tried with a real key)
+- [x] Token server in `server/` with Anole: `POST /token` returns a short-lived Live token
+      (issued real tokens with the real key on 21 November)
 - [x] `src/core`: `Participant`, `Utterance`, `Session` types; the utterance lifecycle enum
 - [x] `src/core`: `transition(state, event) -> [state, effects]` with tests for the basic turn
 - [x] Effect runner: executes effects, feeds results back as events
@@ -46,6 +45,10 @@ Spikes come first; they decide open points in `AGENTS.md`. Throwaway code is fin
 - [x] Interpreter system prompt, built from the participants table
 - [ ] Bare screen: two push-to-talk buttons, captions as plain text (built; renders on web). **Milestone: a two-way
       conversation works on web**
+
+**Live verification is blocked on billing (21 November).** `bun run e2e:live` reaches Google with
+a real token, and Google closes the session: "Your prepayment credits are depleted". Every
+unticked item in phases 1 and 2 that needs a real session waits on credits in the Gemini project.
 
 ## Phase 2: Asynchronous and hands-free (Mon 23)
 

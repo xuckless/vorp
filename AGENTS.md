@@ -40,6 +40,7 @@ bun run typecheck            # tsc --noEmit
 bun test                     # unit tests
 bun run token-server         # the Anole token server on :8787 (needs Zig 0.17; reads .env)
 bun run test:server          # the token server's routes, in memory
+bun run e2e:live             # by hand: recorded speech through the web build against real Gemini
 bun run export:web           # static web build into dist/
 bunx expo install <package>  # add a dependency at the version this Expo SDK expects
 bunx expo-doctor             # check dependency and config health

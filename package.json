@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "token-server": "zig build --build-file server/build.zig run",
-    "test:server": "cd server && zig build test"
+    "test:server": "cd server && zig build test",
+    "e2e:live": "scripts/e2e/live.sh"
   },
   "dependencies": {
     "@google/genai": "^3.6.1",
