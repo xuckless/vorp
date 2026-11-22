@@ -1,7 +1,7 @@
 // Past conversations, on this device only. One owner: this store. Text only; audio is never kept.
 
 import { createStore, type Store } from '@/core/store';
-import type { Participant, Utterance } from '@/core/session';
+import { wasHeard, type Participant, type Utterance } from '@/core/session';
 import type { KeyValueStorage } from '@/services';
 
 export type Line = { speakerId?: string; source: string; translation: string; note?: string };
@@ -28,7 +28,7 @@ export function toConversation(id: string, endedAt: number, participants: readon
     endedAt,
     participants: participants.map((p) => ({ id: p.id, language: p.language })),
     lines: utterances
-      .filter((u) => u.source !== '')
+      .filter(wasHeard)
       .map((u) => ({ speakerId: u.speakerId, source: u.source, translation: u.translation, ...(u.note ? { note: u.note } : {}) })),
     recap: { status: 'none' },
   };
@@ -44,15 +44,35 @@ export const removed = (list: readonly Conversation[], id: string): Conversation
 export const recapped = (list: readonly Conversation[], id: string, recap: RecapState): Conversation[] =>
   list.map((c) => (c.id === id ? { ...c, recap } : c));
 
+const RECAP_STATUSES: readonly string[] = ['none', 'writing', 'failed', 'ready'];
+
+/** The shape a stored entry needs to be shown; one bad entry must not cost the rest. */
+function isConversation(v: unknown): v is Conversation {
+  if (typeof v !== 'object' || v === null) return false;
+  const c = v as Record<string, unknown>;
+  const recap = c.recap as Record<string, unknown> | null | undefined;
+  return (
+    typeof c.id === 'string' &&
+    typeof c.endedAt === 'number' &&
+    Array.isArray(c.participants) &&
+    Array.isArray(c.lines) &&
+    typeof recap === 'object' &&
+    recap !== null &&
+    RECAP_STATUSES.includes(recap.status as string) &&
+    (recap.status !== 'ready' || (typeof recap.text === 'object' && recap.text !== null))
+  );
+}
+
 function parse(raw: string | null): Conversation[] {
+  let value: unknown;
   try {
-    const value: unknown = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(value)) return [];
-    // A recap still being written when the app closed never arrived.
-    return (value as Conversation[]).map((c) => (c.recap.status === 'writing' ? { ...c, recap: { status: 'failed' } } : c));
+    value = raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
+  if (!Array.isArray(value)) return [];
+  // A recap still being written when the app closed never arrived.
+  return value.filter(isConversation).map((c) => (c.recap.status === 'writing' ? { ...c, recap: { status: 'failed' } } : c));
 }
 
 export type History = {

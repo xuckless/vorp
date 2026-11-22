@@ -137,6 +137,37 @@ describe('error paths', () => {
     expect(s.connection).toBe('failed');
     expect(s.error?.kind).toBe('token');
   });
+
+  test('a failed reconnect releases the microphone and keeps what was heard', () => {
+    const [s, log] = run(
+      [
+        ...open,
+        ...said('Hello there', 'en'),
+        { type: 'outputTranscript', text: 'Bonjour' },
+        { type: 'outputAudio', pcm },
+        { type: 'connectionLost', kind: 'socket', message: 'drop' },
+        { type: 'connectFailed', kind: 'token', message: 'expired' },
+      ],
+      freshHandsFree(),
+    );
+    expect(types(log[8])).toEqual(['stopPlayback', 'disconnect', 'closeAudio', 'archive']);
+    expect(log[8].find((e) => e.type === 'archive')).toMatchObject({ utterances: [{ source: 'Hello there' }] });
+    expect(statuses(s)).toEqual(['failed']);
+  });
+
+  test('a microphone failure keeps what was heard', () => {
+    const [, log] = run([...open, ...said('Hello there', 'en'), { type: 'audioFailed', kind: 'mic', message: 'gone' }], freshHandsFree());
+    expect(types(log[5])).toContain('archive');
+  });
+
+  test('a failed conversation is kept once: stop after it archives nothing, start begins anew', () => {
+    const [s, log] = run(
+      [...open, ...said('Hello there', 'en'), { type: 'audioFailed', kind: 'mic', message: 'gone' }, { type: 'stop' }, { type: 'start' }],
+      freshHandsFree(),
+    );
+    expect(log[6]).toEqual([]);
+    expect(s.utterances).toEqual([]);
+  });
 });
 
 describe('push-to-talk (manual detection)', () => {
@@ -465,6 +496,42 @@ describe('echo guard', () => {
     const enqueued = log.flat().flatMap((e) => (e.type === 'enqueuePlayback' ? [e.utteranceId] : []));
     expect(enqueued).toEqual(['u1']);
     expect(s.awaitingResponse).toEqual([]);
+  });
+
+  test('an echo that arrives after its translation finished playing is still dropped', () => {
+    const [s] = run(
+      [
+        ...speaking,
+        { type: 'turnComplete' },
+        { type: 'playbackFinished', utteranceId: 'u1' },
+        ...said('bonjour a tous comment allez vous', 'fr'),
+      ],
+      freshHandsFree(),
+    );
+    expect(s.utterances[0].status).toBe('done');
+    expect(s.utterances[1]).toMatchObject({ status: 'failed', error: 'echo' });
+  });
+
+  test('only the latest finished translations count as echo sources', () => {
+    const turn = (n: number, text: string): SessionEvent[] => [
+      ...said(`line ${n} here`, 'en'),
+      { type: 'outputTranscript', text },
+      { type: 'outputAudio', pcm },
+      { type: 'turnComplete' },
+      { type: 'playbackFinished', utteranceId: `u${n}` },
+    ];
+    const [s] = run(
+      [...open, ...turn(1, 'Bonjour à tous'), ...turn(2, 'Il fait beau'), ...turn(3, 'Merci bien'), ...said('bonjour a tous', 'fr')],
+      freshHandsFree(),
+    );
+    expect(s.utterances[3].status).toBe('translating');
+  });
+
+  test('a dropped echo is left out of the archived conversation', () => {
+    const [, log] = run([...speaking, ...said('bonjour a tous comment allez vous', 'fr'), { type: 'stop' }], freshHandsFree());
+    const archived = log.flat().find((e) => e.type === 'archive');
+    expect(archived).toMatchObject({ utterances: [{ id: 'u1' }] });
+    expect(archived?.type === 'archive' && archived.utterances).toHaveLength(1);
   });
 
   test('real speech during playback is kept', () => {

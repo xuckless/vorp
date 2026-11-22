@@ -369,7 +369,8 @@ real `gemini-3.8-live` sessions with `bun run e2e:live`.
   on the utterance being answered; it is shown under the caption and never spoken.
 - **The setup changes only between sessions**, with one `configure` event (participants and
   settings). The Live API takes the system instruction, tools and voice at session setup.
-- **A conversation is archived when it stops** (`archive` effect, only if something was heard),
+- **A conversation is archived when it stops or fails** (`archive` effect, only if something was
+  heard; a failure also releases the microphone and the socket),
   and `start` begins a new one. The history keeps text only, the newest 50, on the device.
 - **Recap**: `POST /recap` on the token server sends the conversation to `gemini-3.8-flash` and
   returns one summary per language; the key stays on the server. The route is bounded (400 lines,
@@ -403,7 +404,8 @@ real `gemini-3.8-live` sessions with `bun run e2e:live`.
   ducking or barge-in can be added as rows (`OVERLAP_POLICIES` in `src/config/policies.ts`,
   handed to the reducer in `SessionSettings`; `core` never imports config).
 - **Echo**: platform echo cancellation, plus a guard that drops a captured utterance whose
-  transcript matches what Vorp is speaking (60% of its words, `ECHO_MATCH`). The dropped
+  transcript matches what Vorp is speaking or has just spoken (its last two finished
+  translations, since held audio arrives late; 60% of its words, `ECHO_MATCH`). The dropped
   utterance stays in the response order so the model's reply to it is dropped too. Held-button
   speech is never treated as echo. `pauseMicWhileSpeaking` exists as an emergency flag, off by
   default.

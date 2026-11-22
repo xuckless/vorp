@@ -17,6 +17,20 @@ test('a conversation keeps what was heard, as text', () => {
   expect(asText(c)).toEqual(['Hello / Bonjour']);
 });
 
+test('a damaged entry is dropped and the rest of the history is kept', async () => {
+  const good = toConversation('c1', 1, people, [said('Hello', 'Bonjour')]);
+  const { recap: _, ...noRecap } = toConversation('c2', 2, people, [said('Hi', 'Salut')]);
+  const kept = new Map([['vorp.history.v1', JSON.stringify([noRecap, null, good])]]);
+  const storage = { get: async (k: string) => kept.get(k) ?? null, set: async (k: string, v: string) => void kept.set(k, v) };
+  const history = await loadHistory(storage);
+  expect(history.store.get().map((c) => c.id)).toEqual(['c1']);
+});
+
+test('Vorp hearing itself is not kept', () => {
+  const echo: Utterance = { ...said('bonjour a tous', ''), status: 'failed', error: 'echo' };
+  expect(asText(toConversation('c1', 1, people, [said('Hello', 'Bonjour'), echo]))).toEqual(['Hello / Bonjour']);
+});
+
 test('history is newest first and bounded', () => {
   let list = [toConversation('old', 1, people, [said('a', 'b')])];
   for (let i = 0; i < HISTORY_LIMIT; i++) list = added(list, toConversation(`c${i}`, i, people, [said('a', 'b')]));
