@@ -45,6 +45,7 @@ bun run token-server         # the Anole token server on :8787 (needs Zig 0.17; 
 bun run test:server          # the token server's routes (pairing over a loopback socket)
                              # one group: cd server && zig build test -Dtest-filter=pairing
 bun run e2e:live             # by hand: recorded speech through the web build against real Gemini
+bun run e2e:pair             # by hand: two headless phones paired by QR against real Gemini (dev server + token server)
 bun run smoke:voiceprint     # by hand: the voiceprint model on recorded voices, cosine scores
 bun run voiceprint:assets    # voiceprint runtime into public/voiceprint/ (web and export:web run it)
 bun run export:web           # static web build into dist/
@@ -479,6 +480,76 @@ The client contract is `docs/pairing-protocol.md`; change it with the server.
 - WebSocket tests run over a loopback socket (as Anole's realtime template does): under
   `anole.testing` a WebSocket callback route panics on a plain GET (`res._conn` is null), which
   is reported upstream, not worked around.
+
+**Client** (22 November 2026, built to the design's Pair by QR and paired-flow UX pass):
+
+- **One machine per phone**, `core/pairing.ts`: `transition(pairing, event, timing) ->
+  [pairing, effects]`. The room's lifecycle is one enum (`off`, `opening` (guest: mic before the
+  code is spent), `creating`, `connecting`, `waiting`, `joined`, `live`, `ended`, `done` (guest
+  goodbye), `failed` with a `problem`), plus `peer` (here / away) and `link` (up / rejoining).
+  It wraps the phone's own interpreter `Session` (`own`) and runs every session event through
+  the session's own `transition`, so routing, the echo guard, the reply hold and reconnects are
+  the one-device code. The session's playback effects become the relay: `enqueuePlayback` sends
+  audio to the other phone, `finishPlayback` is that turn's `done`, its `archive` is replaced by
+  the pairing's (both sides, in feed order, host only).
+- **Outbound turns are derived**: each event diffs the session's utterances against what was
+  already sent (`sent`), in the contract's order. Turn ids are `h`/`g` + the utterance id. The
+  words go over only once they are known to be the owner's (the language report, or the
+  interpretation starting): the phone may be hearing the other person nearby. An utterance the
+  session routes to `other` (another language, or a voice verdict) is sent `failed` and never
+  relayed: that is the cross-phone language guard, with the paired prompt row.
+- **Turn-taking**: the other person's translation plays when it has audio, one at a time, in
+  order, never while this owner talks (`ownTalking`: the session is capturing or the button is
+  held); it is `queued` (relayed) meanwhile. **Mic and speaker take turns**: the session gains
+  `muted` (a `mute` event; a held button still opens the mic), set while their translation plays
+  here and whenever nobody can hear (not live, link down, peer away). `speaking` follows
+  `ownTalking`. A transcript matching a translation just played here is an echo
+  (`echoRecognised`), on top of the voice filter, which learns the other phone's interpreter
+  voice from what plays here (`heardVoice`).
+- **Prompt row** `paired` (`config/prompts.ts` `PROMPTS`, chosen by `SessionSettings.prompt`):
+  owner's language into the peer's only; nothing for other languages, an interpreter's voice or
+  a loudspeaker, or noise. `pairedSettings` also turns auto-detect off.
+- **Services**: `PairingLink` (`services/pairing.ts`, fetch + WebSocket, one implementation)
+  keeps the keys in memory, pings every 15 s, batches captions per 100 ms (flushed before any
+  other message), splits audio at 64 KiB, and after a drop while paired rejoins with its key for
+  up to 60 s (`rejoining`, then `welcome rejoined` or `lost`); `rate_limited` is a drop,
+  `replaced` is ignored. `WakeLock` (Screen Wake Lock, re-taken when the page is visible again),
+  `Cues` (the design's synthesised notes and vibration; `prime` in the tap for iPhone).
+  `AudioOutput` gained `progress(id)` (for `playback playing`, polled at 4 Hz) and a `blocked`
+  event (iPhone kept the context suspended: "Tap to turn on sound" resumes it in the tap).
+- **Runner** `features/pair/runtime.ts` shares the session runner
+  (`createSessionRunner` in `features/conversation/runtime.ts`) and holds the other person's
+  audio per turn until `playIncoming`. Timers are effects (`expiry`, `goLive` 1.9 s, `booth`
+  6 s, `leave` 2.6 s, `PAIR_TIMING`) carrying the room number, so a late one is ignored.
+- **Host**: "Pair a phone" under Start makes a pairing from the setup as it is, opening the audio
+  in the tap. Host screens come from `hostPairModel`; the paired view from `pairTalkModel` (both
+  in `features/pair/model.ts`, tested). The end card is the booth loop: the pairing's own timer
+  makes a fresh code after 6 s ("Show it now", "Not now"). The conversation goes to History (and
+  the recap if on) without opening the transcript.
+- **Guest** (`/join/<code>?host=<language>`): **deviation**: the QR also carries the host's
+  language (`?host=`), because the protocol only tells the guest after hello (which spends the
+  code) and the design shows it, greyed, before Join. Page language and first pick from
+  `navigator.languages` (`guestLanguage`), names in their own language (`nativeName`, from
+  `Intl.DisplayNames`). Join opens the mic and the speaker first; the code is spent only once
+  they are open, so a denied mic can "Join again". Any refusal without copy of its own
+  (`unavailable`, a network failure) uses "They left before you joined". After the goodbye it
+  goes to `LANDING_URL?from=session&lang=<code>` (`config/pairing.ts`, a placeholder until the
+  owner picks GitHub Pages or Cloudflare Pages; `EXPO_PUBLIC_LANDING_URL` overrides).
+- **Light guest page**: Metro puts any module shared by two async chunks into `__common`, which
+  every page loads. So everything heavy (the owner's app, the paired conversation view with the
+  ring, the Gemini SDK, the gallery) is reached only through one module, `features/app/chunk.ts`:
+  the owner's route loads it at once, the guest's page when they tap Join (the translator through
+  `createLazyTranslator`). The guest page imports `@/ui/dom` files one by one, never the barrel.
+  The aurora is `defer`red (starts when idle, fades in, skipped on save-data or a small phone).
+  The guest's voice filter (`GUEST_VOICE_FILTER`) loads the voiceprint model once its session
+  connects.
+- **Copy**: the guest's is the design's `pair-copy.ts`, as written (`config/pair-copy.ts`); the
+  host reads its English. Host-only lines (end card, "Their phone lost its connection",
+  "Couldn't make a code") are English in the screens.
+- **Solo**: a card whose speaker is unknown is the design's untinted `unknown` card and tints
+  (400 ms) as the speaker resolves.
+- **Landing page**: `landing/index.html`, standalone, outside the Expo build; published by the
+  owner.
 
 ### Conversation
 
