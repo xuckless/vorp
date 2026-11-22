@@ -388,6 +388,11 @@ real `gemini-3.8-live` sessions with `bun run e2e:live`.
   caption (`stage.ts`), and the prompt tells the model to produce nothing for noise.
 - **Brand**: the mark is the voice ring as two strokes in its own spectrum (`assets/brand`, with
   its README). App icons, favicon and splash are generated from it.
+- **Glass** (owner, 21 November 2026): wubble's coloured frost (`src/ui/tokens/glass.ts`, the
+  `Glass` primitive): backdrop blur, saturate 170%, a translucent fill, a faint inner light and a
+  soft shadow, in wubble's three tiers. The fill takes a tint; transcript lines are chat bubbles
+  of `regular` glass in their speaker's hue. This is a chosen exception to "no opacities" and "no
+  bordered containers". On native there is no backdrop blur, only the fill and shadows.
 - **Primitives** (`src/ui/primitives`): `Press` (scale 0.97 while held), `Layer` (a popover that
   grows from its trigger, or a sheet that rises; exits 20% faster), `usePresence`, `transition`.
 

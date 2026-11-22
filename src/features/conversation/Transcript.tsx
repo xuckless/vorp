@@ -1,5 +1,6 @@
 // A whole conversation, both languages, with its notes and its recap. Each person's side of
-// the page is their seat, so who spoke is carried by position, not by a label.
+// the page is their seat, so who spoke is carried by position, not by a label. Each line is a
+// bubble of tinted glass in its speaker's hue.
 
 import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
@@ -7,7 +8,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { languageName } from '@/config/languages';
 import { asText, type Conversation } from '@/features/history/history';
-import { Press } from '@/ui/primitives';
+import { Glass, Press } from '@/ui/primitives';
 import { TOUCH_TARGET, useTheme } from '@/ui/tokens';
 
 import { Sheet } from './Sheet';
@@ -28,22 +29,36 @@ export function Transcript({ conversation, onClose, onDelete }: { conversation: 
     <Sheet open={c !== null} title="Transcript" onClose={onClose}>
       {c === null ? null : (
         <>
-          <View style={{ gap: theme.space.xl }}>
+          <View style={{ gap: theme.space.md }}>
             {c.lines.length === 0 ? <Text style={muted}>Nothing said yet</Text> : null}
             {c.lines.map((line, i) => {
               const speakerIndex = c.participants.findIndex((p) => p.id === line.speakerId);
               const right = speakerIndex > 0;
-              const side = { textAlign: right ? 'right' : 'left' } as const;
               const speaker = c.participants[speakerIndex];
+              // The bubble is tinted with its speaker's hue, and its corner nearest the speaker's
+              // side is tighter, so the bubble points at its seat.
+              const tint = theme.color.participants[Math.max(speakerIndex, 0) % theme.color.participants.length];
+              const corner = right
+                ? { borderBottomRightRadius: theme.radius.sm }
+                : { borderBottomLeftRadius: theme.radius.sm };
               return (
-                <View key={i} style={[styles.line, right ? styles.right : styles.left]}>
+                <Glass
+                  key={i}
+                  tint={tint}
+                  style={[
+                    styles.line,
+                    right ? styles.right : styles.left,
+                    { borderRadius: theme.radius.lg, paddingHorizontal: theme.space.lg, paddingVertical: theme.space.md },
+                    corner,
+                  ]}
+                >
                   {c.participants.length > 2 && speaker ? (
-                    <Text style={[muted, side, { fontSize: 13, lineHeight: 18 }]}>{languageName(speaker.language)}</Text>
+                    <Text style={[muted, { fontSize: 13, lineHeight: 18 }]}>{languageName(speaker.language)}</Text>
                   ) : null}
-                  <Text style={[text, side]}>{line.source}</Text>
-                  {line.translation ? <Text style={[muted, side]}>{line.translation}</Text> : null}
-                  {line.note ? <Text style={[muted, side, { fontSize: 15, lineHeight: 22 }]}>{line.note}</Text> : null}
-                </View>
+                  <Text style={text}>{line.source}</Text>
+                  {line.translation ? <Text style={muted}>{line.translation}</Text> : null}
+                  {line.note ? <Text style={[muted, { fontSize: 15, lineHeight: 22 }]}>{line.note}</Text> : null}
+                </Glass>
               );
             })}
           </View>

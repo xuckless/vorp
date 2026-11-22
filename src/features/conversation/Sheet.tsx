@@ -15,8 +15,8 @@ export function Sheet({ open, title, onClose, children }: { open: boolean; title
   return (
     <Layer open={open} onClose={onClose} kind="sheet" style={[StyleSheet.absoluteFill, styles.sheet, { backgroundColor: theme.color.background }]}>
       {() => (
-        <View style={[styles.column, { paddingHorizontal: theme.space.xl, paddingTop: theme.space.xl }]}>
-          <View style={styles.top}>
+        <View style={[styles.column, { paddingTop: theme.space.xl }]}>
+          <View style={[styles.top, { paddingHorizontal: theme.space.xl }]}>
             <Text accessibilityRole="header" style={[text, { fontFamily: theme.type.familyMedium, fontSize: 20 }]}>
               {title}
             </Text>
@@ -24,7 +24,8 @@ export function Sheet({ open, title, onClose, children }: { open: boolean; title
               <Text style={[text, { fontSize: 15, color: theme.color.textMuted }]}>Close</Text>
             </Press>
           </View>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: theme.space.xxl, paddingVertical: theme.space.xl }}>
+          {/* The side padding is inside the scroll view, so shadows near the edges are not clipped. */}
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: theme.space.xxl, padding: theme.space.xl }}>
             {children}
           </ScrollView>
         </View>
