@@ -109,13 +109,32 @@ const Live = struct {
 
     /// Host and guest, both welcomed, the host told of the guest.
     fn pair(l: *Live, room: Room) !struct { WsClient, WsClient } {
+        const h, const g, _ = try l.pairKeyed(room);
+        return .{ h, g };
+    }
+
+    /// `pair`, and the key the guest rejoins with.
+    fn pairKeyed(l: *Live, room: Room) !struct { WsClient, WsClient, [22]u8 } {
         var h = try l.host(room, "en-US");
         errdefer h.deinit();
         var g = try l.guest(room, "fr-CA");
         errdefer g.deinit();
-        try expectText(&g, "{\"type\":\"welcome\",\"role\":\"guest\",\"peerLanguage\":\"en-US\"}");
+        const welcome = try g.receive();
+        const prefix = "{\"type\":\"welcome\",\"role\":\"guest\",\"peerLanguage\":\"en-US\",\"key\":\"";
+        try std.testing.expect(std.mem.startsWith(u8, welcome.data, prefix));
+        try std.testing.expectEqualStrings("\"}", welcome.data[prefix.len + 22 ..]);
+        const key = welcome.data[prefix.len..][0..22].*;
         try expectText(&h, "{\"type\":\"peer_joined\",\"peerLanguage\":\"fr-CA\"}");
-        return .{ h, g };
+        return .{ h, g, key };
+    }
+
+    /// A side's hello to rejoin with its key.
+    fn rejoin(l: *Live, room: Room, role: []const u8, key: []const u8) !WsClient {
+        var ws = try l.connect(&room.code);
+        errdefer ws.deinit();
+        var buf: [160]u8 = undefined;
+        try ws.send(.text, try std.fmt.bufPrint(&buf, "{{\"type\":\"hello\",\"role\":\"{s}\",\"key\":\"{s}\",\"language\":\"en\"}}", .{ role, key }));
+        return ws;
     }
 };
 
@@ -159,12 +178,19 @@ test "host and guest pair, learn each other's language, and relay captions and a
             defer h.deinit();
             defer g.deinit();
 
-            const caption = "{\"type\":\"caption\",\"turn\":1,\"side\":\"translation\",\"text\":\"Bonjour\",\"final\":true}";
-            try h.send(.text, caption);
-            try expectText(&g, caption);
-            const turn = "{\"type\":\"turn\",\"turn\":4,\"event\":\"done\"}";
-            try g.send(.text, turn);
-            try expectText(&h, turn);
+            // Every relayed type, verbatim, in order.
+            const sent = [_][]const u8{
+                "{\"type\":\"speaking\",\"talking\":true}",
+                "{\"type\":\"turn\",\"turn\":\"h1\",\"state\":\"talking\"}",
+                "{\"type\":\"caption\",\"turn\":\"h1\",\"side\":\"source\",\"delta\":\"Hello \"}",
+                "{\"type\":\"turn\",\"turn\":\"h1\",\"state\":\"translating\"}",
+                "{\"type\":\"caption\",\"turn\":\"h1\",\"side\":\"translation\",\"delta\":\"Bonjour\"}",
+            };
+            for (sent) |m| try h.send(.text, m);
+            for (sent) |m| try expectText(&g, m);
+            const playback = "{\"type\":\"playback\",\"turn\":\"h1\",\"state\":\"playing\",\"progress\":0.5}";
+            try g.send(.text, playback);
+            try expectText(&h, playback);
 
             const pcm = [_]u8{ 1, 2, 3, 4, 5, 6 };
             try h.send(.binary, &pcm);
@@ -240,7 +266,30 @@ test "the guest's Stop ends it for both" {
     }.check, .{});
 }
 
-test "a side that disconnects ends it for the other" {
+test "a side that drops is away; it rejoins with its key and the relay carries on" {
+    try Live.run(struct {
+        fn check(l: *Live) !void {
+            const room = try l.createRoom();
+            var h, var g, const key = try l.pairKeyed(room);
+            defer h.deinit();
+            try g.close(.normal, "");
+            g.deinit();
+            try expectText(&h, "{\"type\":\"peer_away\"}");
+
+            var back = try l.rejoin(room, "guest", &key);
+            defer back.deinit();
+            try expectText(&back, "{\"type\":\"welcome\",\"role\":\"guest\",\"peerLanguage\":\"en-US\",\"rejoined\":true}");
+            try expectText(&h, "{\"type\":\"peer_back\"}");
+            const speaking = "{\"type\":\"speaking\",\"talking\":true}";
+            try h.send(.text, speaking);
+            try expectText(&back, speaking);
+            try h.close(.normal, "");
+            try back.close(.normal, "");
+        }
+    }.check, .{});
+}
+
+test "a side away for a minute ends it for the other" {
     try Live.run(struct {
         fn check(l: *Live) !void {
             const room = try l.createRoom();
@@ -248,8 +297,36 @@ test "a side that disconnects ends it for the other" {
             defer h.deinit();
             try g.close(.normal, "");
             g.deinit();
+            try expectText(&h, "{\"type\":\"peer_away\"}");
+            fake_now.store(t0 + 60 * std.time.ms_per_s, .monotonic);
+            try h.send(.text, "{\"type\":\"ping\"}");
             try expectText(&h, "{\"type\":\"ended\",\"reason\":\"guest_left\"}");
-            try h.close(.normal, "");
+            try expectClose(&h, 1000);
+        }
+    }.check, .{});
+}
+
+test "a rejoin replaces a connection the server still holds" {
+    try Live.run(struct {
+        fn check(l: *Live) !void {
+            const room = try l.createRoom();
+            var h, var g = try l.pair(room);
+            defer h.deinit();
+            defer g.deinit();
+            // The host's phone locked with its socket left open, then came back on a new one.
+            var again = try l.rejoin(room, "host", &room.host_key);
+            defer again.deinit();
+            try expectText(&again, "{\"type\":\"welcome\",\"role\":\"host\",\"peerLanguage\":\"fr-CA\",\"rejoined\":true}");
+            try expectText(&g, "{\"type\":\"peer_back\"}");
+            try expectText(&h, "{\"type\":\"peer_back\"}"); // the old socket is still in the relay
+            try h.send(.text, "{\"type\":\"ping\"}");
+            try expectRefusal(&h, "replaced", 4412);
+            const turn = "{\"type\":\"turn\",\"turn\":\"h2\",\"state\":\"talking\"}";
+            try again.send(.text, turn);
+            try expectText(&g, turn);
+            try again.close(.normal, "");
+            try expectText(&g, "{\"type\":\"peer_away\"}");
+            try g.close(.normal, "");
         }
     }.check, .{});
 }
@@ -347,7 +424,7 @@ test "refusals: unknown code, wrong key, bad hello, a second host" {
     }.check, .{});
 }
 
-test "bounds: an oversized message closes with 1009; a flood is cut and the peer told" {
+test "bounds: an oversized message closes with 1009; a flood is cut and the peer told it is away" {
     try Live.run(struct {
         fn check(l: *Live) !void {
             const room = try l.createRoom();
@@ -367,7 +444,8 @@ test "bounds: an oversized message closes with 1009; a flood is cut and the peer
             }
             try h.send(.binary, chunk);
             try expectRefusal(&h, "rate_limited", 4429);
-            try expectText(&g, "{\"type\":\"ended\",\"reason\":\"host_left\"}");
+            // Cut like a dropped connection: the host may rejoin within the minute.
+            try expectText(&g, "{\"type\":\"peer_away\"}");
             try g.close(.normal, "");
 
             const other = try l.createRoom();

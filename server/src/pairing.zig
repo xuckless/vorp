@@ -1,6 +1,6 @@
-//! Pairing two phones by QR code: `POST /rooms` makes a room, `WS /rooms/{code}` connects
+//! Pairing two phones by QR code: `POST /rooms` makes a room, `WS /rooms/:code` connects
 //! its host and its one guest, and the server relays between them. Each phone runs its own
-//! Gemini Live session; only its results (translated audio, captions, turn marks) cross here.
+//! Gemini Live session; only its results (translated audio, captions, turn and playback marks) cross here.
 //! The protocol, for the app's side, is docs/pairing-protocol.md; the room states are
 //! src/rooms.zig.
 //!
@@ -72,13 +72,13 @@ pub const Pairing = struct {
         p.mutex.unlock(io);
     }
 
-    /// Ends open rooms past their time (telling their hosts) and forgets old tombstones.
-    /// Under the lock.
+    /// Ends rooms whose time ran out (telling whoever is still connected) and forgets old
+    /// tombstones. Under the lock.
     fn sweep(p: *Pairing, now: i64) void {
         p.registry.sweep(now, struct {
             p: *Pairing,
-            pub fn expired(self: @This(), code: rooms.Code) void {
-                _ = broadcastJson(self.p, code, ended(.expired), null);
+            pub fn ended(self: @This(), code: rooms.Code, reason: rooms.EndReason) void {
+                _ = broadcastJson(self.p, code, endedMessage(reason), null);
             }
         }{ .p = p });
     }
@@ -89,7 +89,7 @@ pub const Pairing = struct {
 /// `POST /rooms`: a new room for the host. No body.
 pub fn create(app: *App, req: *anole.Request, res: *anole.Response) !void {
     const p = &app.pairing;
-    var entropy: [2 * rooms.secret_bytes]u8 = undefined;
+    var entropy: [rooms.Registry.entropy_len]u8 = undefined;
     req.io.randomSecure(&entropy) catch |err| switch (err) {
         error.Canceled => return err,
         error.EntropyUnavailable => return res.fail(.service_unavailable, "no randomness for a code right now"),
@@ -118,13 +118,20 @@ pub fn create(app: *App, req: *anole.Request, res: *anole.Response) !void {
     });
 }
 
+
 // ------------------------------------------------------------------ WebSocket
+
+/// The largest text message: every relayed type is a small JSON object (a caption carries a
+/// delta, not the whole text). Bigger is a `bad_message` error.
+pub const max_text = 4 * 1024;
 
 /// What a socket knows of itself, in `ws.context` from `open` to `close`.
 const Member = struct {
     code: rooms.Code,
     /// Set by an accepted hello.
     role: ?rooms.Role = null,
+    /// The connection's epoch from that hello (`rooms.Registry.hello`).
+    epoch: u32 = 0,
     /// The socket was told the room ended (or was refused) and closed; it relays nothing more
     /// and its close is no news to the peer.
     done: bool = false,
@@ -145,6 +152,7 @@ const Problem = enum(u16) {
     taken = 4409,
     expired = 4410,
     host_gone = 4411,
+    replaced = 4412,
     rate_limited = 4429,
 
     fn of(err: rooms.Refusal) Problem {
@@ -160,17 +168,18 @@ const Problem = enum(u16) {
     fn text(problem: Problem) []const u8 {
         return switch (problem) {
             .bad_message => "the message is not one this endpoint takes here",
-            .bad_key => "the host key does not match this code",
+            .bad_key => "the key does not match this code",
             .not_found => "no pairing has this code",
             .taken => "this code has been used",
             .expired => "this code has expired",
             .host_gone => "the host is no longer connected",
+            .replaced => "this side rejoined on another connection",
             .rate_limited => "too many messages",
         };
     }
 };
 
-/// The callbacks of `WS /rooms/{code}`.
+/// The callbacks of `WS /rooms/:code`.
 pub const Socket = struct {
     /// A code that names no room is refused at once; anything else waits for the hello.
     pub fn open(app: *App, ws: *websocket.Socket, req: *anole.Request) !void {
@@ -199,37 +208,42 @@ pub const Socket = struct {
         const cost: u32 = 1 + @as(u32, @intCast(msg.data.len / 1024));
         const allowed = (try p.limiter.?.takeAt(m.relayKey(&key_buf), cost, relay_policy, now)).allowed;
         if (!allowed) {
-            try refuse(ws, .rate_limited);
-            m.done = true;
+            try refuseMember(ws, m, .rate_limited);
             return leave(p, ws, m, role);
         }
 
         const kind: Kind = switch (msg.type) {
             .binary => if (msg.data.len % 2 == 0) .audio else return sendError(ws, .bad_message),
-            .text => kindOf(msg.data) orelse return sendError(ws, .bad_message),
+            .text => (if (msg.data.len <= max_text) kindOf(msg.data) else null) orelse return sendError(ws, .bad_message),
             else => return,
         };
 
         p.lock(ws.io);
-        const state = p.registry.state(m.code, now);
-        const reason: ?rooms.EndReason = switch (state) {
-            .ended => |r| r,
+        const state = p.registry.state(m.code, role, m.epoch, now);
+        const stopped: ?rooms.EndReason = switch (state) {
             .waiting, .paired => if (kind == .end) p.registry.stop(m.code, role, now) else null,
+            .replaced, .ended => null,
         };
         p.unlock(ws.io);
 
-        if (reason) |r| {
-            // Stopped here: the peer hears it through the room. Ended already (the peer left,
-            // or the code expired while waiting): only this socket still needs telling.
-            if (kind == .end and state != .ended) _ = broadcastJson(p, m.code, ended(r), ws);
+        if (stopped) |r| {
+            _ = broadcastJson(p, m.code, endedMessage(r), ws);
             return finish(ws, m, r);
+        }
+        switch (state) {
+            // A rejoin took this socket's place: it closes without news for anyone.
+            .replaced => return refuseMember(ws, m, .replaced),
+            // The peer left for good, or the code expired while waiting: only this socket
+            // still needs telling.
+            .ended => |r| return finish(ws, m, r),
+            .waiting, .paired => {},
         }
         switch (kind) {
             .ping => try sendJson(ws, .{ .type = "pong" }),
             .hello => try sendError(ws, .bad_message),
             .end => unreachable,
-            // Nothing to relay to before the guest is here.
-            .audio, .caption, .turn => if (state == .paired) {
+            // Nothing to relay to before the guest is here, or while the peer is away.
+            .audio, .caption, .turn, .playback, .speaking => if (state == .paired and state.paired.peer_here) {
                 _ = p.sockets.broadcast(&m.code, msg.type, msg.data, ws);
             },
         }
@@ -246,8 +260,9 @@ pub const Socket = struct {
     }
 };
 
-/// What a text message asks for, by its `type`.
-const Kind = enum { hello, ping, end, caption, turn, audio };
+/// What a message asks for: its `type` (binary frames are `audio`). The relayed types are
+/// the phones' own (docs/pairing-protocol.md); the server reads only `type`.
+const Kind = enum { hello, ping, end, caption, turn, playback, speaking, audio };
 
 fn kindOf(data: []const u8) ?Kind {
     var buf: [256]u8 = undefined;
@@ -276,61 +291,83 @@ fn hello(p: *Pairing, ws: *websocket.Socket, m: *Member, msg: websocket.Message)
     const language = rooms.Language.init(in.language) orelse return refuseMember(ws, m, .bad_message);
     const now = p.clock(ws.io);
 
-    switch (in.role) {
-        .host => {
-            p.lock(ws.io);
-            defer p.unlock(ws.io);
-            const expires = p.registry.helloHost(m.code, in.key, language, now) catch |err|
-                return refuseMember(ws, m, .of(err));
-            m.role = .host;
-            // Joined and welcomed under the lock: the guest can pair only after this, so its
-            // `peer_joined` reaches the host, after the welcome.
-            p.sockets.join(&m.code, ws) catch |err| {
-                _ = p.registry.leave(m.code, .host, now);
-                return err;
-            };
-            _ = broadcastJson(p, m.code, .{ .type = "welcome", .role = "host", .expiresAt = expires }, null);
-        },
-        .guest => {
-            p.lock(ws.io);
-            const host_language = p.registry.helloGuest(m.code, language, now);
-            p.unlock(ws.io);
-            const peer = host_language catch |err| return refuseMember(ws, m, .of(err));
-            m.role = .guest;
-            // Welcomed before joining, so nothing relayed from the host comes first.
-            try sendJson(ws, .{ .type = "welcome", .role = "guest", .peerLanguage = peer.slice() });
-            p.sockets.join(&m.code, ws) catch |err| {
-                leave(p, ws, m, .guest);
-                return err;
-            };
-            // The host may have left between the pairing and the join, its news sent to a
-            // room the guest was not yet in.
-            p.lock(ws.io);
-            const state = p.registry.state(m.code, now);
-            p.unlock(ws.io);
-            if (state == .ended) return finish(ws, m, state.ended);
-            _ = broadcastJson(p, m.code, .{ .type = "peer_joined", .peerLanguage = language.slice() }, ws);
+    p.lock(ws.io);
+    const accepted = p.registry.hello(m.code, in.role, in.key, language, now);
+    const joined = accepted catch |err| {
+        p.unlock(ws.io);
+        return refuseMember(ws, m, .of(err));
+    };
+    m.role = in.role;
+    m.epoch = joined.epoch;
+
+    if (in.role == .host and !joined.rejoined) {
+        // A host opening its room: joined and welcomed under the lock. The guest can pair
+        // only after this, so its `peer_joined` reaches the host, after the welcome.
+        defer p.unlock(ws.io);
+        p.sockets.join(&m.code, ws) catch |err| {
+            _ = p.registry.leave(m.code, .host, m.epoch, now);
+            return err;
+        };
+        _ = broadcastJson(p, m.code, .{ .type = "welcome", .role = "host", .expiresAt = joined.expires_ms }, null);
+        return;
+    }
+    p.unlock(ws.io);
+
+    // A guest pairing, or either side rejoining: welcomed before joining the relay, so
+    // nothing relayed from the peer comes first.
+    if (joined.rejoined) {
+        try sendJson(ws, .{ .type = "welcome", .role = @tagName(in.role), .peerLanguage = joined.peer_language.slice(), .rejoined = true });
+    } else {
+        try sendJson(ws, .{ .type = "welcome", .role = "guest", .peerLanguage = joined.peer_language.slice(), .key = @as([]const u8, &joined.key) });
+    }
+    p.sockets.join(&m.code, ws) catch |err| {
+        leave(p, ws, m, in.role);
+        return err;
+    };
+    // The peer may have ended it between the hello and the join, its news sent to a room
+    // this socket was not yet in.
+    p.lock(ws.io);
+    const state = p.registry.state(m.code, in.role, m.epoch, now);
+    p.unlock(ws.io);
+    switch (state) {
+        .ended => |r| return finish(ws, m, r),
+        .replaced => return refuseMember(ws, m, .replaced),
+        .waiting => unreachable, // a guest's hello pairs the room, and only a paired room is rejoined
+        .paired => |paired| {
+            if (joined.rejoined) {
+                _ = broadcastJson(p, m.code, .{ .type = "peer_back" }, ws);
+            } else {
+                _ = broadcastJson(p, m.code, .{ .type = "peer_joined", .peerLanguage = language.slice() }, ws);
+            }
+            // The peer is away itself: its `peer_back` follows when it returns (a host that
+            // rejoins learns the guest's language from its own welcome).
+            if (!paired.peer_here) try sendJson(ws, .{ .type = "peer_away" });
         },
     }
 }
 
-/// `role`'s socket is going without a Stop: the room ends and the peer is told.
+/// `role`'s socket is going without a Stop: a paired peer is told it is away (it may
+/// rejoin), a waiting host's room ends.
 fn leave(p: *Pairing, ws: *websocket.Socket, m: *Member, role: rooms.Role) void {
     const now = p.clock(ws.io);
     p.lock(ws.io);
-    const reason = p.registry.leave(m.code, role, now);
+    const left = p.registry.leave(m.code, role, m.epoch, now);
     p.unlock(ws.io);
-    if (reason) |r| _ = broadcastJson(p, m.code, ended(r), ws);
+    switch (left) {
+        .none => {},
+        .away => _ = broadcastJson(p, m.code, .{ .type = "peer_away" }, ws),
+        .ended => |r| _ = broadcastJson(p, m.code, endedMessage(r), ws),
+    }
 }
 
-fn ended(reason: rooms.EndReason) struct { type: []const u8 = "ended", reason: []const u8 } {
+fn endedMessage(reason: rooms.EndReason) struct { type: []const u8 = "ended", reason: []const u8 } {
     return .{ .reason = @tagName(reason) };
 }
 
 /// Tells this socket the room ended, and closes it.
 fn finish(ws: *websocket.Socket, m: *Member, reason: rooms.EndReason) !void {
     m.done = true;
-    try sendJson(ws, ended(reason));
+    try sendJson(ws, endedMessage(reason));
     try ws.close(.normal, "");
 }
 

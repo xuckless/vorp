@@ -2,7 +2,7 @@
 //! sent to a client) for a short-lived, single-use Live API token. With WEB_DIR set it also
 //! serves the exported web app, so the demo is one origin. `POST /recap` summarises a finished
 //! conversation in each of its languages with a text model, the key again staying here.
-//! `POST /rooms` and `WS /rooms/{code}` pair two phones by QR code and relay between them
+//! `POST /rooms` and `WS /rooms/:code` pair two phones by QR code and relay between them
 //! (src/pairing.zig, docs/pairing-protocol.md).
 //!
 //!   bun run token-server        # from the repository root; reads .env there

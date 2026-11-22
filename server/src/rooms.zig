@@ -5,12 +5,14 @@
 //! A room lives through three phases:
 //!
 //!   open    created; the host may say hello, then waits for one guest until `expires_ms`
-//!   paired  the guest said hello; everything is relayed until either side stops or leaves
+//!   paired  the guest said hello; everything is relayed until either side stops, or one
+//!           side's socket has been gone longer than `away_ms` (a locked phone, a network
+//!           blip: within that time it says hello again with its key and carries on)
 //!   ended   a tombstone, kept `tombstone_ms` so a late scan learns why ("taken", "expired",
 //!           "host_gone") instead of "not_found"
 const std = @import("std");
 
-/// A code or a host key: 16 random bytes, base64url without padding.
+/// A code, a host key or a guest key: 16 random bytes, base64url without padding.
 pub const secret_bytes = 16;
 pub const code_len = std.base64.url_safe_no_pad.Encoder.calcSize(secret_bytes);
 pub const Code = [code_len]u8;
@@ -27,6 +29,8 @@ pub const Refusal = error{ NotFound, Expired, Taken, HostGone, BadKey };
 pub const Limits = struct {
     /// An unused code lives this long (owner: 10 minutes).
     ttl_ms: i64 = 10 * std.time.ms_per_min,
+    /// How long a paired side may be disconnected before the room ends for it.
+    away_ms: i64 = 60 * std.time.ms_per_s,
     /// How long an ended room is remembered, so a late scan gets a precise refusal.
     tombstone_ms: i64 = 10 * std.time.ms_per_min,
     /// Rooms open or paired at once, across every client.
@@ -88,21 +92,38 @@ const ClientKey = struct {
 
 pub const Phase = enum { open, paired, ended };
 
+/// One side's connection: whether a socket holds it, and which one. Each accepted hello
+/// starts a new `epoch`, so a socket a rejoin replaced cannot speak or leave for the new one.
+const Side = struct {
+    here: bool = false,
+    epoch: u32 = 0,
+    /// When its socket went, in a paired room, until it rejoins.
+    away_since: ?i64 = null,
+    language: Language = .{},
+};
+
 pub const Room = struct {
     host_key: Key,
+    guest_key: Key,
     client: ClientKey,
     created_ms: i64,
     /// When an unused code stops working. A paired room does not expire.
     expires_ms: i64,
     ended_ms: i64 = 0,
     phase: Phase = .open,
-    /// The host said hello and has not left.
-    host_here: bool = false,
     /// A guest joined once: the code is spent.
     was_paired: bool = false,
-    host_language: Language = .{},
-    guest_language: Language = .{},
+    /// By `Role`: host, then guest.
+    sides: [2]Side = .{ .{}, .{} },
     end_reason: ?EndReason = null,
+
+    fn side(r: *Room, role: Role) *Side {
+        return &r.sides[@intFromEnum(role)];
+    }
+
+    fn keyOf(r: *const Room, role: Role) *const Key {
+        return if (role == .host) &r.host_key else &r.guest_key;
+    }
 
     fn live(r: *const Room) bool {
         return r.phase != .ended;
@@ -112,14 +133,27 @@ pub const Room = struct {
         r.phase = .ended;
         r.end_reason = reason;
         r.ended_ms = now;
-        r.host_here = false;
+        for (&r.sides) |*sd| sd.here = false;
     }
 
-    /// An open room past its time ends as expired. True when this call ended it.
-    fn expire(r: *Room, now: i64) bool {
-        if (r.phase != .open or now < r.expires_ms) return false;
-        r.end(.expired, now);
-        return true;
+    /// An open room past its time ends as expired; a paired one whose side has been away too
+    /// long ends as that side's leaving. The reason when this call ended it.
+    fn lapse(r: *Room, now: i64, limits: Limits) ?EndReason {
+        switch (r.phase) {
+            .ended => {},
+            .open => if (now >= r.expires_ms) {
+                r.end(.expired, now);
+                return .expired;
+            },
+            .paired => for (r.sides, 0..) |sd, i| {
+                const since = sd.away_since orelse continue;
+                if (now - since < limits.away_ms) continue;
+                const reason: EndReason = if (i == @intFromEnum(Role.host)) .host_left else .guest_left;
+                r.end(reason, now);
+                return reason;
+            },
+        }
+        return null;
     }
 
     /// When an ended room is forgotten.
@@ -133,6 +167,10 @@ pub const Room = struct {
         return if (r.end_reason == .expired) error.Expired else error.HostGone;
     }
 };
+
+fn keyMatches(expected: *const Key, given: []const u8) bool {
+    return given.len == code_len and std.crypto.timing_safe.eql(Key, expected.*, given[0..code_len].*);
+}
 
 /// The rooms, keyed by code. Not thread-safe: the caller holds a lock around every call.
 pub const Registry = struct {
@@ -152,12 +190,15 @@ pub const Registry = struct {
     /// tombstone goes first.
     const tombstones_per_room = 3;
 
+    /// Bytes `create` takes from a CSPRNG: the code, the host key, the guest key.
+    pub const entropy_len = 3 * secret_bytes;
+
     pub const Created = struct { code: Code, host_key: Key, expires_ms: i64 };
     pub const CreateError = error{ TooManyRooms, TooManyForClient, Collision, OutOfMemory };
 
-    /// A new open room for `client`. `entropy`: 32 bytes from a CSPRNG, the code and then the
-    /// host key. Call `sweep` first, so ended and expired rooms do not count.
-    pub fn create(self: *Registry, client: []const u8, entropy: [2 * secret_bytes]u8, now: i64) CreateError!Created {
+    /// A new open room for `client`. Call `sweep` first, so ended and expired rooms do not
+    /// count.
+    pub fn create(self: *Registry, client: []const u8, entropy: [entropy_len]u8, now: i64) CreateError!Created {
         var live: u32 = 0;
         var mine: u32 = 0;
         var it = self.rooms.valueIterator();
@@ -170,14 +211,23 @@ pub const Registry = struct {
         if (self.rooms.count() >= self.limits.max_rooms * (1 + tombstones_per_room)) self.evictOldestTombstone();
 
         var code: Code = undefined;
-        var key: Key = undefined;
-        _ = std.base64.url_safe_no_pad.Encoder.encode(&code, entropy[0..secret_bytes]);
-        _ = std.base64.url_safe_no_pad.Encoder.encode(&key, entropy[secret_bytes..]);
+        var host_key: Key = undefined;
+        var guest_key: Key = undefined;
+        const enc = std.base64.url_safe_no_pad.Encoder;
+        _ = enc.encode(&code, entropy[0..secret_bytes]);
+        _ = enc.encode(&host_key, entropy[secret_bytes .. 2 * secret_bytes]);
+        _ = enc.encode(&guest_key, entropy[2 * secret_bytes ..]);
         const slot = try self.rooms.getOrPut(self.gpa, code);
         if (slot.found_existing) return error.Collision;
         const expires = now + self.limits.ttl_ms;
-        slot.value_ptr.* = .{ .host_key = key, .client = .init(client), .created_ms = now, .expires_ms = expires };
-        return .{ .code = code, .host_key = key, .expires_ms = expires };
+        slot.value_ptr.* = .{
+            .host_key = host_key,
+            .guest_key = guest_key,
+            .client = .init(client),
+            .created_ms = now,
+            .expires_ms = expires,
+        };
+        return .{ .code = code, .host_key = host_key, .expires_ms = expires };
     }
 
     fn evictOldestTombstone(self: *Registry) void {
@@ -191,8 +241,9 @@ pub const Registry = struct {
         if (oldest) |c| _ = self.rooms.remove(c);
     }
 
-    /// Ends open rooms past their time and forgets old tombstones. `notify.expired(code)` is
-    /// called for each room that expired with its host still connected.
+    /// Ends rooms whose time ran out (unused codes, sides away too long) and forgets old
+    /// tombstones. `notify.ended(code, reason)` is called for each room this ended while a
+    /// side was still connected to hear it.
     pub fn sweep(self: *Registry, now: i64, notify: anytype) void {
         var forget: [64]Code = undefined;
         while (true) {
@@ -200,8 +251,8 @@ pub const Registry = struct {
             var it = self.rooms.iterator();
             while (it.next()) |e| {
                 const r = e.value_ptr;
-                const host_was_here = r.host_here;
-                if (r.expire(now) and host_was_here) notify.expired(e.key_ptr.*);
+                const someone_here = r.sides[0].here or r.sides[1].here;
+                if (r.lapse(now, self.limits)) |reason| if (someone_here) notify.ended(e.key_ptr.*, reason);
                 if (!r.live() and now >= r.forgetAt(self.limits) and n < forget.len) {
                     forget[n] = e.key_ptr.*;
                     n += 1;
@@ -217,67 +268,121 @@ pub const Registry = struct {
         return self.rooms.contains(code);
     }
 
-    /// The room's host says hello with its key and language. The expiry time on success.
-    pub fn helloHost(self: *Registry, code: Code, key: []const u8, language: Language, now: i64) Refusal!i64 {
-        const r = self.rooms.getPtr(code) orelse return error.NotFound;
-        _ = r.expire(now);
-        if (r.phase == .ended) return r.refusal();
-        if (key.len != code_len or !std.crypto.timing_safe.eql(Key, r.host_key, key[0..code_len].*)) return error.BadKey;
-        if (r.host_here or r.phase != .open) return error.Taken;
-        r.host_here = true;
-        r.host_language = language;
-        return r.expires_ms;
-    }
+    /// An accepted hello.
+    pub const Joined = struct {
+        /// This connection's epoch, which `state` and `leave` take.
+        epoch: u32,
+        /// The other side's language; empty for a host still waiting.
+        peer_language: Language,
+        /// The key this side rejoins with: how the guest learns its own.
+        key: Key,
+        /// When the code expires, while the room is open.
+        expires_ms: i64,
+        /// The side was here before: the peer is told it is back, not that it joined.
+        rejoined: bool,
+    };
 
-    /// The guest says hello with its language: the room is paired, the code is spent. The
-    /// host's language on success.
-    pub fn helloGuest(self: *Registry, code: Code, language: Language, now: i64) Refusal!Language {
+    /// `role` says hello: the host with its key to open its room, the guest without a key to
+    /// pair (spending the code), or either side with its key to rejoin a paired room. A
+    /// rejoin replaces a socket the server still thinks is connected (a phone that locked
+    /// without the connection closing).
+    pub fn hello(self: *Registry, code: Code, role: Role, key: []const u8, language: Language, now: i64) Refusal!Joined {
         const r = self.rooms.getPtr(code) orelse return error.NotFound;
-        _ = r.expire(now);
+        _ = r.lapse(now, self.limits);
+        const me = r.side(role);
+        const peer = r.side(if (role == .host) .guest else .host);
+        var rejoined = false;
         switch (r.phase) {
             .ended => return r.refusal(),
-            .paired => return error.Taken,
-            .open => {},
+            .open => switch (role) {
+                .host => {
+                    if (!keyMatches(&r.host_key, key)) return error.BadKey;
+                    if (me.here) return error.Taken;
+                    me.language = language;
+                },
+                .guest => {
+                    if (key.len != 0) return error.BadKey;
+                    if (!peer.here) return error.HostGone;
+                    r.phase = .paired;
+                    r.was_paired = true;
+                    me.language = language;
+                },
+            },
+            .paired => {
+                // The code is spent: only a side with its key comes back.
+                if (key.len == 0) return error.Taken;
+                if (!keyMatches(r.keyOf(role), key)) return error.BadKey;
+                rejoined = true;
+            },
         }
-        if (!r.host_here) return error.HostGone;
-        r.phase = .paired;
-        r.was_paired = true;
-        r.guest_language = language;
-        return r.host_language;
+        me.here = true;
+        me.away_since = null;
+        me.epoch +%= 1;
+        return .{
+            .epoch = me.epoch,
+            .peer_language = peer.language,
+            .key = r.keyOf(role).*,
+            .expires_ms = r.expires_ms,
+            .rejoined = rejoined,
+        };
     }
 
-    /// What a message from a member of the room may do now. An open room past its time
-    /// ends here as expired (the caller tells the host).
-    pub const State = union(enum) { waiting, paired, ended: EndReason };
+    /// What a message from a member of the room may do now. Time that ran out ends the room
+    /// here (the caller tells the sockets). `replaced`: a rejoin took this socket's place.
+    /// `peer_here`: whether a relayed message has anyone to reach.
+    pub const State = union(enum) {
+        waiting,
+        paired: struct { peer_here: bool },
+        replaced,
+        ended: EndReason,
+    };
 
-    pub fn state(self: *Registry, code: Code, now: i64) State {
+    pub fn state(self: *Registry, code: Code, role: Role, epoch: u32, now: i64) State {
         const r = self.rooms.getPtr(code) orelse return .{ .ended = .expired };
-        _ = r.expire(now);
+        _ = r.lapse(now, self.limits);
+        if (r.phase != .ended and r.side(role).epoch != epoch) return .replaced;
         return switch (r.phase) {
             .open => .waiting,
-            .paired => .paired,
+            .paired => .{ .paired = .{ .peer_here = r.side(if (role == .host) .guest else .host).here } },
             .ended => .{ .ended = r.end_reason.? },
         };
     }
 
     /// `role` pressed Stop. The reason when this ended the room, null when it had ended.
     pub fn stop(self: *Registry, code: Code, role: Role, now: i64) ?EndReason {
-        return self.finish(code, if (role == .host) .host_stopped else .guest_stopped, now);
-    }
-
-    /// `role`'s socket closed without a Stop. As `stop`.
-    pub fn leave(self: *Registry, code: Code, role: Role, now: i64) ?EndReason {
-        return self.finish(code, if (role == .host) .host_left else .guest_left, now);
-    }
-
-    fn finish(self: *Registry, code: Code, reason: EndReason, now: i64) ?EndReason {
         const r = self.rooms.getPtr(code) orelse return null;
         if (r.phase == .ended) return null;
+        const reason: EndReason = if (role == .host) .host_stopped else .guest_stopped;
         r.end(reason, now);
         return reason;
     }
 
-    /// Rooms open or paired: for tests and the console.
+    /// What a socket closing without a Stop did to its room.
+    pub const Left = union(enum) {
+        /// Nothing to tell: the room had ended, or a rejoin had replaced the socket.
+        none,
+        /// A paired side went away: the peer is told, and the side may rejoin within
+        /// `away_ms`.
+        away,
+        /// The room ended: a waiting host left.
+        ended: EndReason,
+    };
+
+    pub fn leave(self: *Registry, code: Code, role: Role, epoch: u32, now: i64) Left {
+        const r = self.rooms.getPtr(code) orelse return .none;
+        const me = r.side(role);
+        if (r.phase == .ended or me.epoch != epoch or !me.here) return .none;
+        me.here = false;
+        if (r.phase == .open) {
+            const reason: EndReason = if (role == .host) .host_left else .guest_left;
+            r.end(reason, now);
+            return .{ .ended = reason };
+        }
+        me.away_since = now;
+        return .away;
+    }
+
+    /// Rooms open or paired: for tests.
     pub fn liveCount(self: *Registry) usize {
         var n: usize = 0;
         var it = self.rooms.valueIterator();
