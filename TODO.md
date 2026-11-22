@@ -163,6 +163,34 @@ Verified live on 21 November unless noted. Findings are under "Hands-free turns"
 - [ ] Voice preview in Settings
 - [ ] Primitives in the gallery (`Press`, `Layer`)
 
+## Pair by QR code: live translation across two devices (owner, 22 November)
+
+The owner's plan for the demo. One person (likely us at the booth) starts a session and shows a
+QR code. Someone scans it with their own phone; the page that opens asks only one thing, their
+native language. The two devices are then wired into one live translation session: each person
+speaks into their own phone and hears the other in their own language.
+
+Owner's answers (22 November): each phone runs its own Gemini session that translates its owner's
+speech into the other's language, and the token server relays the translated voice and captions.
+Each person hears only the other, translated; captions show both sides. The guest picks a
+language and taps Join (the tap grants the microphone). Either side's Stop ends it for both. One
+guest per QR code, a fresh code each session, unused codes expire after 10 minutes; joining is by
+QR only. The host keeps the conversation in History; the guest keeps nothing and is sent to the
+product landing page. The host starts pairing from a second button on the Start page. The design
+session designs the screens.
+
+- [x] Design and implementation questions answered by the owner
+- [ ] Server: rooms on the token server (WebSocket relay, one-time codes, guest tokens)
+- [ ] Host: start a paired session from Start and show its QR code
+- [ ] Guest: scan, pick your native language, Join
+- [ ] Live translation across the two devices
+- [ ] Guest redirect to the landing page after the session
+- [ ] Product landing page: a standalone static page for GitHub Pages with a "vote for us" link
+      kept as one config value (the hackathon has no voting page yet)
+- [ ] Phone test over HTTPS: deploy to Google Compute Engine, maybe behind a Cloudflare tunnel
+      (owner: test later)
+- [ ] Booth check on two real phones over the venue network
+
 ## Booth (Sat 28)
 
 - [ ] QR code to the live URL; a printed one-line instruction
