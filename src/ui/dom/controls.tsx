@@ -105,12 +105,18 @@ export function Select<T extends string>({
   onChange,
   label,
   search,
+  placeholder = 'Search',
+  empty = 'No match',
 }: {
   value: T;
   options: readonly Option<T>[];
   onChange: (v: T) => void;
   label: string;
   search?: boolean;
+  /** The search field's placeholder, in the reader's language. */
+  placeholder?: string;
+  /** What the list says when nothing matches, in the reader's language. */
+  empty?: string;
 }) {
   const [state, setState] = useState<'closed' | 'open' | 'closing'>('closed');
   const [query, setQuery] = useState('');
@@ -151,7 +157,7 @@ export function Select<T extends string>({
       </button>
       {state !== 'closed' && (
         <div className={`vp-pop vp-frost vp-frost-thick ${state === 'closing' ? 'vp-pop-out' : ''}`} role="listbox" aria-label={label}>
-          {search && <input className="vp-pop-search" placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} />}
+          {search && <input className="vp-pop-search" placeholder={placeholder} value={query} onChange={(e) => setQuery(e.target.value)} />}
           <div className="vp-pop-list">
             {shown.map((o, i) => (
               <button
@@ -172,7 +178,7 @@ export function Select<T extends string>({
                 {o.disabled ? <span className="vp-mute">{o.disabled}</span> : o.detail && <span className="vp-mute">{o.detail}</span>}
               </button>
             ))}
-            {!shown.length && <div className="vp-pop-empty vp-mute">No match</div>}
+            {!shown.length && <div className="vp-pop-empty vp-mute">{empty}</div>}
           </div>
         </div>
       )}
