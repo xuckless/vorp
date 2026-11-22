@@ -43,9 +43,19 @@ copies and are not listed here; their licences ship with the packages.
   (Preact prototype, 22 November 2026). The owner's own work, contributed to Vorp under
   Apache-2.0.
 - **Copied into:** `src/ui/dom/` (styles, controls, aurora, ring, logo, caption card, glow,
-  swapper) and the DOM screens in `src/features/app/dom/`.
+  swapper, QR code) and the DOM screens in `src/features/app/dom/`; Pair by QR (22 November
+  2026): `src/features/pair/dom/` (from `Pair.tsx` and `PairTalk.tsx`), `src/services/cues.web.ts`
+  (from `cues.ts`), `src/config/pair-copy.ts` (from `pair-copy.ts`, the guest copy in 12
+  languages, as written) and `landing/index.html` (from `landing/index.html`).
 - **Changes:** Preact to React 19, wired to the app's session, settings, enrolment and history
   instead of the prototype's scripted data.
+
+## uqr (dependency, recorded at the owner's request)
+
+- **Source:** [unjs/uqr](https://github.com/unjs/uqr) `0.1.2`, installed from npm, not copied.
+- **Licence:** MIT, Copyright (c) Project Nayuki, Copyright (c) 2023 Anthony Fu. Its encoder is
+  based on Project Nayuki's QR Code generator (MIT).
+- **Used by:** `src/ui/dom/QrCode.tsx` (the host's pairing code, error correction H).
 
 ## Wubble glass
 
