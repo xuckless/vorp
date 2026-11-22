@@ -48,7 +48,7 @@ export const palettes: Record<ColorScheme, Palette> = {
   light: {
     background: '#f5f3ee',
     surface: '#ffffff',
-    surfaceRaised: '#ffffff',
+    surfaceRaised: '#ece9e1',
     border: '#dedad2',
     text: '#15171a',
     textMuted: '#5f646b',

@@ -70,11 +70,11 @@ function statusText(stage: Stage, session: Session, mode: Mode): string {
     case 'listening':
       return session.settings.detection === 'auto' ? 'Listening' : 'Hold a button to talk';
     case 'hearing':
-      return stage.language ? `Hearing ${languageName(stage.language)}` : 'Hearing';
+      return stage.languages?.length ? `Hearing ${stage.languages.map(languageName).join(' and ')}` : 'Hearing';
     case 'translating':
       return 'Translating';
     case 'speaking':
-      return stage.language ? `Speaking ${languageName(stage.language)}` : 'Speaking';
+      return stage.languages?.length ? `Speaking ${stage.languages.map(languageName).join(' and ')}` : 'Speaking';
   }
 }
 

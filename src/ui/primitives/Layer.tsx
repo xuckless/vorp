@@ -2,8 +2,8 @@
 // to 12); a `sheet` rises into place. Both leave faster than they arrive (rule 15) and stay
 // interruptible: closing mid-entrance retargets from where the panel is.
 
-import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useEffect, type ReactNode } from 'react';
+import { Platform, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { duration, exitDuration, motion, timing, useReducedMotion, type DurationName } from '@/ui/tokens';
 
@@ -33,6 +33,14 @@ export function Layer({
   const reduced = useReducedMotion();
   const name = NAME[kind];
   const { mounted, shown } = usePresence(open, reduced ? 0 : exitDuration(duration[name]));
+  useEffect(() => {
+    if (!open || Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, onClose]);
   if (!mounted) return null;
   const away: ViewStyle =
     kind === 'popover'
