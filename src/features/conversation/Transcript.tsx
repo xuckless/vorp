@@ -5,6 +5,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { languageName } from '@/config/languages';
 import { asText, type Conversation } from '@/features/history/history';
 import { Press } from '@/ui/primitives';
 import { TOUCH_TARGET, useTheme } from '@/ui/tokens';
@@ -30,10 +31,15 @@ export function Transcript({ conversation, onClose, onDelete }: { conversation: 
           <View style={{ gap: theme.space.xl }}>
             {c.lines.length === 0 ? <Text style={muted}>Nothing said yet</Text> : null}
             {c.lines.map((line, i) => {
-              const right = c.participants.findIndex((p) => p.id === line.speakerId) > 0;
+              const speakerIndex = c.participants.findIndex((p) => p.id === line.speakerId);
+              const right = speakerIndex > 0;
               const side = { textAlign: right ? 'right' : 'left' } as const;
+              const speaker = c.participants[speakerIndex];
               return (
                 <View key={i} style={[styles.line, right ? styles.right : styles.left]}>
+                  {c.participants.length > 2 && speaker ? (
+                    <Text style={[muted, side, { fontSize: 13, lineHeight: 18 }]}>{languageName(speaker.language)}</Text>
+                  ) : null}
                   <Text style={[text, side]}>{line.source}</Text>
                   {line.translation ? <Text style={[muted, side]}>{line.translation}</Text> : null}
                   {line.note ? <Text style={[muted, side, { fontSize: 15, lineHeight: 22 }]}>{line.note}</Text> : null}

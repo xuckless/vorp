@@ -10,8 +10,8 @@ export type Stage = {
   utterance?: Utterance;
   /** Where its speaker sits, -1 left … 1 right; 0 when nobody is active. */
   direction: number;
-  /** The language being spoken to (speaking) or heard (hearing), as a BCP-47 code. */
-  language?: string;
+  /** The language(s) being spoken to (speaking) or heard (hearing), as BCP-47 codes. */
+  languages?: string[];
 };
 
 function seat(s: Session, u: Utterance | undefined): number {
@@ -26,9 +26,12 @@ export function stageOf(s: Session): Stage {
   const queue = playbackQueue(s);
   const speaking = queue.find((u) => u.status === 'speaking');
   // The interpreter leans toward the listener while it speaks, toward the speaker while it hears.
-  if (speaking) return { phase: 'speaking', utterance: speaking, direction: -seat(s, speaking), language: targetLanguages(s, speaking)[0] };
+  if (speaking) {
+    const languages = targetLanguages(s, speaking);
+    return { phase: 'speaking', utterance: speaking, direction: -seat(s, speaking), languages: languages.length ? languages : undefined };
+  }
   const hearing = capturingUtterance(s);
-  if (hearing) return { phase: 'hearing', utterance: hearing, direction: seat(s, hearing), language: hearing.language };
+  if (hearing) return { phase: 'hearing', utterance: hearing, direction: seat(s, hearing), languages: hearing.language ? [hearing.language] : undefined };
   if (queue.length > 0) return { phase: 'translating', utterance: queue[0], direction: 0 };
   return { phase: 'listening', direction: 0 };
 }

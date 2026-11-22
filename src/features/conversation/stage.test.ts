@@ -34,7 +34,25 @@ test('the stage follows the conversation', () => {
 
   const spoken: SessionEvent[] = [...sent, { type: 'outputAudio', pcm }, { type: 'playbackStarted', utteranceId: 'u1' }];
   // Béa (right) spoke French, so the interpreter speaks English and leans left, to Alex.
-  expect(stageOf(run(spoken))).toMatchObject({ phase: 'speaking', direction: -1, language: 'en' });
+  expect(stageOf(run(spoken))).toMatchObject({ phase: 'speaking', direction: -1, languages: ['en'] });
+});
+
+test('a three-person conversation names every target language while speaking', () => {
+  const trio: Participant[] = [
+    ...people,
+    { id: 'c', name: 'Carlos', language: 'es', voice: 'Charon' },
+  ];
+  const events: SessionEvent[] = [
+    ...open,
+    { type: 'speechStarted' },
+    { type: 'inputTranscript', text: 'Hello' },
+    { type: 'speechEnded' },
+    { type: 'sourceLanguage', language: 'en' },
+    { type: 'outputAudio', pcm },
+    { type: 'playbackStarted', utteranceId: 'u1' },
+  ];
+  const s = events.reduce((st, e) => transition(st, e)[0], initialSession(trio, settings));
+  expect(stageOf(s)).toMatchObject({ phase: 'speaking', languages: ['fr', 'es'] });
 });
 
 test('captions leave out what was never heard', () => {
