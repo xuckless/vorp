@@ -14,5 +14,7 @@ copies and are not listed here; their licences ship with the packages.
   `bot-avatars`, `voice-ring`.
 - **Changes:** imports moved back from Preact (`preact/compat`) to React 19; a
   `'use no memo'` directive at the top of the component and hook files keeps the React Compiler
-  off them; `voice-ring/useMicrophone.ts` removed (Vorp supplies the audio level itself). Each
+  off them; `voice-ring/useMicrophone.ts` removed (Vorp supplies the audio level itself). `bot-avatars` gained a `talk`
+  level that opens the mouth while the interpreter speaks (marked "Vorp" in `types.ts`,
+  `BotAvatar.tsx` and `draw.ts`). Each
   folder's `index.ts` carries a source comment.

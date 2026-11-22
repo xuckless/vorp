@@ -12,14 +12,14 @@ mode applies: reach breadth first, harden in phase 7.
 - [ ] Create the public GitHub repository `xuckless/vorp` and push
 - [x] Scaffold Expo SDK 58 (TypeScript, Expo Router) with Bun; web export builds and renders
 - [ ] Confirm Android and iOS start (needs a device or emulator)
-- [ ] Folder layout from `AGENTS.md`: `src/{app,core,services,features,ui,config}`, `server/`
+- [x] Folder layout from `AGENTS.md`: `src/{app,core,services,features,ui,config}`, `server/`
       (`src/app` exists; the rest arrive with their first file)
 - [x] Strict TypeScript, `@/` path alias, ESLint (Expo config)
 - [ ] ESLint import-boundary rule (`core` imports nothing outward); Prettier
-- [ ] Replace the placeholder Expo icons and splash image with Vorp's own
+- [x] Replace the placeholder Expo icons and splash image with Vorp's own
 - [x] `bun test` running with one passing reducer test
 - [x] `THIRD_PARTY_NOTICES.md` with the first entries
-- [ ] `.env.example`; `README.md` stub
+- [x] `.env.example`; `README.md` stub
 
 ## Phase 1: Prove the pipeline (Sun 22)
 
@@ -69,7 +69,7 @@ Verified live on 21 November unless noted. Findings are under "Hands-free turns"
 - [x] Bare screen shows the mode (hands-free or held button) and the queue as plain text
 - [x] **Milestone: hands-free two-way conversation on web, listening while speaking**
 - [ ] Try it by hand on a real device with a loudspeaker: echo, real voices, a noisy room
-- [ ] The model sometimes speaks a placeholder such as "<no speech detected>" for noise; make
+- [x] The model sometimes speaks a placeholder such as "<no speech detected>" for noise; make
       it stay silent or drop those replies
 - [ ] A long session: `goAway`, reconnect and resumption
 
@@ -79,7 +79,7 @@ Verified live on 21 November unless noted. Findings are under "Hands-free turns"
       dark (values provisional until the design prototype)
 - [x] Motion tokens and helpers for the 19 motion rules (durations, easings, press scale, exit
       ratio, stagger); reduced-motion switch
-- [ ] Primitives: `Pressable` (0.97), `Text`, `Surface`, `IconButton`, `Sheet`, `Popover`, `Chip`
+- [x] Primitives: `Pressable` (0.97), `Text`, `Surface`, `IconButton`, `Sheet`, `Popover`, `Chip`
 - [x] Slot registry: typed contracts for `thinkingIndicator`, `voiceVisualiser`, `agentAvatar`,
       `messageSurface`, `captionTransition`; the registry table; plain stand-ins for each
 - [x] Copy vendor engines from the wallpaper project into `src/ui/effects/vendor`: thinking-orbs,
@@ -92,37 +92,37 @@ Verified live on 21 November unless noted. Findings are under "Hands-free turns"
       web; never run on a device or emulator)
 - [x] Effects pause offscreen, when the app is backgrounded, and under reduced motion (web:
       reduced motion and offscreen checked in headless Chromium; backgrounding and native not run)
-- [ ] Gallery route (dev only): every slot implementation and primitive on one page (slots done,
+- [x] Gallery route (dev only): every slot implementation and primitive on one page (slots done,
       `/gallery`; primitives not built yet)
 
 ## Phase 4: The conversation experience (Wed 25)
 
-- [ ] Stage screen: language header, centre stage, caption cards, participant buttons
-- [ ] Centre stage wired to session state: ring on mic level while listening, thinking orbs while
+- [x] Stage screen: language header, centre stage, caption cards, participant buttons
+- [x] Centre stage wired to session state: ring on mic level while listening, thinking orbs while
       translating, ring on output level while speaking, lean toward the active speaker
-- [ ] Caption cards: streaming original text, distortion wave into the translation, golden glow
+- [x] Caption cards: streaming original text, distortion wave into the translation, golden glow
       on the card being spoken
-- [ ] Queue made visible: waiting translations shown in order
-- [ ] Inline setup: tap a language chip or the people count to change it
-- [ ] Language picker: searchable, English and French pinned, from the generated table
-- [ ] Voice picker for the single interpreter voice, with a short preview
-- [ ] Transcript page behind the top button: full history of the conversation, both languages
-- [ ] Microphone permission flow and first-run hint
-- [ ] States for empty, connecting, reconnecting and error
-- [ ] Responsive layout: phone portrait, tablet, laptop; readable from two metres at the booth
+- [x] Queue made visible: waiting translations shown in order
+- [x] Inline setup: tap a language chip or the people count to change it
+- [x] Language picker: searchable, English and French pinned, from the generated table
+- [x] Voice picker for the single interpreter voice (in Settings; no audio preview yet)
+- [x] Transcript page behind the top button: full history of the conversation, both languages
+- [x] Microphone permission flow and first-run hint
+- [x] States for empty, connecting, reconnecting and error
+- [x] Responsive layout: phone portrait, tablet, laptop; readable from two metres at the booth
 - [ ] Accessibility pass: labels, focus order, touch targets, contrast
 
 ## Phase 5: Interpreter behaviours and persistence (Thu 26, morning)
 
-- [ ] Behaviour table: each row adds prompt text and optional tool declarations
-- [ ] Tone and register, with a per-conversation setting
-- [ ] Cultural notes as a caption-only annotation on the card
-- [ ] Asks when unsure, behind a flag; evaluate and keep or cut
-- [ ] Recap: bilingual summary when a conversation ends; share and copy
-- [ ] Storage interface with web and native implementations
-- [ ] Settings persisted; conversation history list, open and delete
-- [ ] Settings screen: theme, overlap policy, behaviours, slot choices, flags
-- [ ] Three participants: sequential output per language, best effort
+- [x] Behaviour table: each row adds prompt text and optional tool declarations
+- [x] Tone and register, with a per-conversation setting
+- [x] Cultural notes as a caption-only annotation on the card
+- [x] Asks when unsure, behind a flag; evaluate and keep or cut
+- [x] Recap: bilingual summary when a conversation ends; share and copy
+- [x] Storage interface with web and native implementations
+- [x] Settings persisted; conversation history list, open and delete
+- [x] Settings screen: theme, overlap policy, behaviours, slot choices, flags
+- [x] Three participants: sequential output per language, best effort
 - [ ] Stretch: a voice per person, only once everything above works
 
 ## Phase 6: Deploy and native (Thu 26, afternoon)
@@ -143,16 +143,25 @@ Verified live on 21 November unless noted. Findings are under "Hands-free turns"
 - [ ] Long-session test: reconnection, token refresh, session time limits
 - [ ] Performance check by hand on the demo devices; trim effects that drop frames
 - [ ] Review pass for the code principles: no stray booleans, no duplicated tables
-- [ ] README: what it is, how Gemini is used, architecture diagram, run instructions, screenshots
-- [ ] `THIRD_PARTY_NOTICES.md` complete
+- [x] README: what it is, how Gemini is used, architecture diagram, run instructions, screenshots
+- [x] `THIRD_PARTY_NOTICES.md` complete
 - [ ] Five-minute pitch video (optional alongside the repository)
 - [ ] Submit on the MLH event page before midnight
+
+## Built on 21 November, not yet checked by hand
+
+- [ ] Cultural notes and ask-when-unsure against the real model (the note tool is declared and
+      handled; only the demo has shown a note)
+- [ ] Three people in one real session
+- [ ] Light theme and a screen-reader pass
+- [ ] Voice preview in Settings
+- [ ] Primitives in the gallery (`Press`, `Layer`)
 
 ## Booth (Sat 28)
 
 - [ ] QR code to the live URL; a printed one-line instruction
-- [ ] Demo script: two languages, one idiom for a cultural note, a recap at the end
-- [ ] Offline plan: headset or directional microphone, push-to-talk mode, a recorded video
+- [x] Demo script: two languages, one idiom for a cultural note, a recap at the end
+- [x] Offline plan: headset or directional microphone, push-to-talk mode, a recorded video
 - [ ] Check the key's quota and spend cap in the morning
 
 ## After the hackathon

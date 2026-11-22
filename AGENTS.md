@@ -355,6 +355,36 @@ real `gemini-3.8-live` sessions with `bun run e2e:live`.
   writes refs during render). The thinking orb is tuned at 64/32/20 px only; other sizes draw at
   the nearest tuned size below and scale with CSS.
 
+### Behaviours, recap, storage and the demo (21 November 2026)
+
+- **Behaviours are rows** (`src/config/behaviours.ts`): `TONES` (one chosen) and `BEHAVIOURS`
+  (each on or off). A row adds a rule to the interpreter's prompt and, where it needs one, a tool
+  declaration. `SessionSettings` carries the chosen ids to the translator; the reducer does not
+  read them. Cultural notes use the `add_note` tool: the note arrives as a `note` event and lands
+  on the utterance being answered; it is shown under the caption and never spoken.
+- **The setup changes only between sessions**, with one `configure` event (participants and
+  settings). The Live API takes the system instruction, tools and voice at session setup.
+- **A conversation is archived when it stops** (`archive` effect, only if something was heard),
+  and `start` begins a new one. The history keeps text only, the newest 50, on the device.
+- **Recap**: `POST /recap` on the token server sends the conversation to `gemini-3.8-flash` and
+  returns one summary per language; the key stays on the server. The route is bounded (400 lines,
+  24 KB, 4 languages) and shares the token rate limit. It runs when a conversation ends, if the
+  recap row is on, and the transcript opens to show it.
+- **Storage** is one `KeyValueStorage` interface over AsyncStorage, which is localStorage on web.
+  The owners of state do not move: `features/settings/saved.ts` snapshots the session's setup,
+  the slot choices and the theme and motion preferences, and puts a snapshot back at start,
+  keeping only values the tables still know (`snapshot.ts`, pure).
+- **The demo is the real stage on scripted services** (`services/demo.ts`, script in
+  `config/demo.ts`): recorded voices play through the real audio output, so the ring, the mouth,
+  the wave and the glow all run as they do live. It needs no microphone, network or key, ends
+  after its last line and shows a canned recap. It keeps nothing.
+- **Noise**: a reply that is only a bracketed stage direction ("<no speech detected>") is not a
+  caption (`stage.ts`), and the prompt tells the model to produce nothing for noise.
+- **Brand**: the mark is the voice ring as two strokes in its own spectrum (`assets/brand`, with
+  its README). App icons, favicon and splash are generated from it.
+- **Primitives** (`src/ui/primitives`): `Press` (scale 0.97 while held), `Layer` (a popover that
+  grows from its trigger, or a sheet that rises; exits 20% faster), `usePresence`, `transition`.
+
 ### Conversation
 
 - **One shared device**: one microphone, one speaker, placed between the participants.
