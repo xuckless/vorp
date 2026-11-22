@@ -520,3 +520,13 @@ describe('pauseMicWhileSpeaking', () => {
     expect(micOpen(s)).toBe(true);
   });
 });
+
+test('a participant changes between sessions, not during one', () => {
+  const french = freshHandsFree().participants[1];
+  const spanish = { ...french, language: 'es', name: 'Spanish speaker' };
+  const [idle] = transition(freshHandsFree(), { type: 'setParticipant', participant: spanish });
+  expect(idle.participants[1].language).toBe('es');
+  const [connecting] = transition(freshHandsFree(), { type: 'start' });
+  const [same] = transition(connecting, { type: 'setParticipant', participant: spanish });
+  expect(same.participants[1].language).toBe(french.language);
+});

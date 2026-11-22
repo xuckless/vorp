@@ -93,6 +93,8 @@ export type Pcm = Int16Array;
 export type SessionEvent =
   | { type: 'start' }
   | { type: 'stop' }
+  /** Change one person's setup. Only between sessions: a live session was opened for the old one. */
+  | { type: 'setParticipant'; participant: Participant }
   | { type: 'connected' }
   | { type: 'connectFailed'; kind: 'token' | 'socket'; message: string }
   | { type: 'connectionLost'; kind: 'socket' | 'timeLimit'; message: string }
@@ -266,6 +268,10 @@ function step(s: Session, e: SessionEvent): Transition {
         { ...s, connection: 'connecting', error: undefined },
         [{ type: 'openAudio' }, { type: 'connect', participants: s.participants, settings: s.settings }],
       ];
+
+    case 'setParticipant':
+      if (s.connection !== 'idle' && s.connection !== 'failed') return [s, []];
+      return [{ ...s, participants: s.participants.map((p) => (p.id === e.participant.id ? e.participant : p)) }, []];
 
     case 'stop':
       return [{ ...failInFlight(s, 'stopped'), connection: 'idle' }, RELEASE];

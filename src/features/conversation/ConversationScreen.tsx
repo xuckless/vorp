@@ -3,19 +3,22 @@
 // session store; the only local state is the runtime handle.
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View, type TextStyle, type ViewStyle } from 'react-native';
+import { StyleSheet, Text, useWindowDimensions, View, type TextStyle } from 'react-native';
 
 import { DEFAULT_PARTICIPANTS } from '@/config/conversation';
 import { languageName } from '@/config/languages';
 import { DEFAULT_SETTINGS } from '@/config/policies';
-import type { ConnectionStatus, Session, SessionErrorKind, Utterance } from '@/core/session';
+import type { ConnectionStatus, ParticipantId, Session, SessionErrorKind, Utterance } from '@/core/session';
 import { createServices } from '@/services';
 import { AgentAvatar, CaptionTransition, MessageSurface, ThinkingIndicator, VoiceVisualiser, type AgentAvatarState, type VoiceState } from '@/ui/slots';
-import { duration, easing, motion, useTheme, type Theme } from '@/ui/tokens';
+import { Press, transition } from '@/ui/primitives';
+import { motion, timing, TOUCH_TARGET, useReducedMotion, useTheme, type Theme } from '@/ui/tokens';
 
+import { COLUMN_WIDTH, LanguagePicker } from './LanguagePicker';
 import { createLevels } from './levels';
 import { createRuntime, type Runtime } from './runtime';
 import { captions, stageOf, type Stage, type StagePhase } from './stage';
+import { Transcript } from './Transcript';
 
 const START_LABEL: Record<ConnectionStatus, string> = {
   idle: 'Start',
@@ -68,15 +71,6 @@ function statusText(stage: Stage): string {
   }
 }
 
-/** A CSS transition, for the web build; native ignores the keys it does not know. */
-function transition(properties: string, ms: number = duration.base, curve: readonly number[] = easing.move): ViewStyle {
-  return {
-    transitionProperty: properties,
-    transitionDuration: `${ms}ms`,
-    transitionTimingFunction: `cubic-bezier(${curve.join(',')})`,
-  } as ViewStyle;
-}
-
 function useSession(runtime: Runtime): Session {
   return useSyncExternalStore(runtime.store.subscribe, runtime.store.get, runtime.store.get);
 }
@@ -97,11 +91,17 @@ export function ConversationScreen() {
   const { dispatch } = runtime;
   const theme = useTheme();
   const styles = stylesFor(theme);
+  const reduced = useReducedMotion();
   const { width, height } = useWindowDimensions();
+  // Which overlay is open: visual-only, so it lives here.
+  const [editing, setEditing] = useState<ParticipantId | null>(null);
+  const [reading, setReading] = useState(false);
 
   const stage = stageOf(session);
   const open = session.connection === 'open';
   const busy = session.connection === 'connecting' || session.connection === 'reconnecting';
+  const settable = session.connection === 'idle' || session.connection === 'failed';
+  const swap = transition('opacity, transform', timing('base', 'move', reduced));
   const translating = stage.phase === 'translating';
   const ring = Math.round(Math.max(200, Math.min(340, width - 96, height * 0.36)));
   const shown = captions(session).slice(-2);
@@ -113,7 +113,24 @@ export function ConversationScreen() {
       <View style={styles.column}>
         <View style={styles.top}>
           <Text style={styles.wordmark}>Vorp</Text>
-          <Text style={styles.languages}>{session.participants.map((p) => languageName(p.language)).join('  ·  ')}</Text>
+          <View style={styles.links}>
+            {session.participants.map((p) => (
+              <Press
+                key={p.id}
+                disabled={!settable}
+                accessibilityLabel={`${languageName(p.language)}, change language`}
+                onPress={() => setEditing(p.id)}
+                style={styles.link}
+              >
+                <Text style={styles.linkText}>{languageName(p.language)}</Text>
+              </Press>
+            ))}
+            {shown.length > 0 ? (
+              <Press onPress={() => setReading(true)} style={styles.link}>
+                <Text style={styles.linkText}>Transcript</Text>
+              </Press>
+            ) : null}
+          </View>
         </View>
 
         <View style={styles.centre}>
@@ -128,10 +145,10 @@ export function ConversationScreen() {
               />
             </View>
             {/* Overlap: the avatar is still leaving while the orb arrives, and back. */}
-            <View style={[styles.core, transition('opacity, transform'), translating ? styles.away : styles.here]}>
+            <View style={[styles.core, swap, translating ? styles.away : styles.here]}>
               <AgentAvatar state={AVATAR_STATE[stage.phase]} talk={stage.phase === 'speaking' ? levels.out : 0} size={Math.round(ring * 0.34)} />
             </View>
-            <View style={[styles.core, transition('opacity, transform'), translating ? styles.here : styles.away]}>
+            <View style={[styles.core, swap, translating ? styles.here : styles.away]}>
               <ThinkingIndicator size={Math.round(ring * 0.26)} />
             </View>
           </View>
@@ -169,40 +186,36 @@ export function ConversationScreen() {
                 const holding = session.held === p.id;
                 const enabled = session.held === undefined || holding;
                 return (
-                  <Pressable
+                  <Press
                     key={p.id}
-                    accessibilityRole="button"
                     accessibilityLabel={`Hold to talk, ${languageName(p.language)}`}
                     disabled={!enabled}
                     onPressIn={() => dispatch({ type: 'pressTalk', speakerId: p.id })}
                     onPressOut={() => dispatch({ type: 'releaseTalk', speakerId: p.id })}
-                    style={({ pressed }) => [
-                      styles.person,
-                      transition('background-color, transform', duration.fast, easing.enter),
-                      holding && styles.personHeld,
-                      pressed && styles.pressed,
-                    ]}
+                    style={[styles.person, holding && styles.personHeld]}
                   >
                     <Text style={[styles.personText, holding && styles.personTextHeld]}>{languageName(p.language)}</Text>
-                  </Pressable>
+                  </Press>
                 );
               })}
             </View>
           ) : null}
-          <Pressable
-            accessibilityRole="button"
-            disabled={busy}
-            onPress={() => dispatch({ type: open ? 'stop' : 'start' })}
-            style={({ pressed }) => [
-              open ? styles.quiet : styles.start,
-              transition('background-color, transform', duration.fast, easing.enter),
-              pressed && styles.pressed,
-            ]}
-          >
+          <Press disabled={busy} onPress={() => dispatch({ type: open ? 'stop' : 'start' })} style={open ? styles.quiet : styles.start}>
             <Text style={open ? styles.quietText : styles.startText}>{START_LABEL[session.connection]}</Text>
-          </Pressable>
+          </Press>
         </View>
       </View>
+      <LanguagePicker
+        open={editing !== null}
+        selected={session.participants.find((p) => p.id === editing)?.language}
+        onClose={() => setEditing(null)}
+        onPick={(code) => {
+          const person = session.participants.find((p) => p.id === editing);
+          if (person) dispatch({ type: 'setParticipant', participant: { ...person, language: code, name: `${languageName(code)} speaker` } });
+          setEditing(null);
+        }}
+      />
+      <Transcript open={reading} session={session} onClose={() => setReading(false)} />
     </View>
   );
 }
@@ -221,10 +234,12 @@ function stylesFor(theme: Theme) {
   const text: TextStyle = { fontFamily: theme.type.family, color: theme.color.text };
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.color.background, alignItems: 'center' },
-    column: { flex: 1, width: '100%', maxWidth: 720, paddingHorizontal: theme.space.xl, paddingVertical: theme.space.xl },
-    top: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', minHeight: 44 },
+    column: { flex: 1, width: '100%', maxWidth: COLUMN_WIDTH, paddingHorizontal: theme.space.xl, paddingVertical: theme.space.xl },
+    top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: TOUCH_TARGET },
     wordmark: { ...text, fontSize: 20, fontFamily: theme.type.familyMedium },
-    languages: { ...text, fontSize: 15, color: theme.color.textMuted },
+    links: { flexDirection: 'row', gap: theme.space.xl },
+    link: { minHeight: TOUCH_TARGET, justifyContent: 'center' },
+    linkText: { ...text, fontSize: 15, color: theme.color.textMuted },
     centre: { flex: 1.25, alignItems: 'center', justifyContent: 'center', gap: theme.space.xl },
     core: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
     here: { opacity: 1, transform: [{ scale: 1 }] },
@@ -240,10 +255,9 @@ function stylesFor(theme: Theme) {
     personHeld: { backgroundColor: theme.color.text },
     personText: { ...text, fontSize: 17, fontFamily: theme.type.familyMedium },
     personTextHeld: { color: theme.color.background },
-    pressed: { transform: [{ scale: motion.pressScale }] },
     start: { minHeight: 56, minWidth: 200, paddingHorizontal: theme.space.xxl, borderRadius: theme.radius.md, backgroundColor: theme.color.text, alignItems: 'center', justifyContent: 'center' },
     startText: { ...text, fontSize: 17, fontFamily: theme.type.familyMedium, color: theme.color.background },
-    quiet: { minHeight: 44, paddingHorizontal: theme.space.xl, alignItems: 'center', justifyContent: 'center' },
+    quiet: { minHeight: TOUCH_TARGET, paddingHorizontal: theme.space.xl, alignItems: 'center', justifyContent: 'center' },
     quietText: { ...text, fontSize: 15, color: theme.color.textMuted },
   });
 }
