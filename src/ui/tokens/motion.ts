@@ -1,7 +1,7 @@
 // Motion tokens and helpers for the motion rules in AGENTS.md. Pure data and functions, no
 // React, so they can be tested and used by any animation API (Animated, Reanimated, CSS).
 //
-// PROVISIONAL durations and curves: the design prototype may retune them. The ratios fixed by
+// The curves are the signed-off design's (22 November 2026); durations stay provisional. The ratios fixed by
 // the rules (press 0.97, popover 0.95, exits 20% shorter, 30 ms row stagger, 12% knob stretch)
 // are not provisional.
 
@@ -25,9 +25,9 @@ export type DurationName = keyof typeof duration;
 
 export const easing = {
   /** Rule 1: entrances ease out. */
-  enter: [0.23, 1, 0.32, 1],
+  enter: [0.16, 1, 0.3, 1],
   /** Rule 9: moves ease in and out. */
-  move: [0.77, 0, 0.175, 1],
+  move: [0.65, 0, 0.35, 1],
   /** Exits accelerate away toward their trigger (rule 12). */
   exit: [0.4, 0, 1, 1],
 } as const satisfies Record<string, Bezier>;

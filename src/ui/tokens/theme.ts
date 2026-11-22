@@ -1,8 +1,8 @@
 // Design tokens: colour, type, spacing, radius. The one module that holds these values.
 //
-// PROVISIONAL: every value below is a placeholder until the design prototype lands. The shape
-// (token names and the light / dark split) is what the rest of the app relies on; replace the
-// numbers and colours here and nowhere else.
+// Colours are the owner's signed-off design (xuckless/the-wallpaper-project src/vorp, 22 November
+// 2026): graphite and ink, or paper and graphite, with the brand spectrum. The DOM design system
+// (src/ui/dom/style.ts) builds its CSS variables from these; spacing and radii stay provisional.
 
 import { useSyncExternalStore } from 'react';
 import { useColorScheme } from 'react-native';
@@ -27,35 +27,49 @@ export type Palette = {
   /** Text and icons drawn on the accent. */
   onAccent: string;
   danger: string;
-  /** One accent hue per participant, in seat order. */
+  /** One accent hue per participant, in seat order: you (the owner), then them. */
   participants: readonly string[];
+  /** Controls on a surface (a select, a segmented track), and a pressed control. */
+  control: string;
+  press: string;
+  /** Solid floating surfaces (a dropdown nested in frost). */
+  pop: string;
 };
 
-/** PROVISIONAL palettes: graphite base, gold accent. */
+/** The brand spectrum: your end (blue), the interpreter (violet, pink), their end (orange). */
+export const SPECTRUM = { blue: '#4c8dff', violet: '#8f6bff', pink: '#f25cc4', orange: '#ffa24c' } as const;
+
+/** The design's palettes. `accent` (gold) is only read by the older slot stand-ins. */
 export const palettes: Record<ColorScheme, Palette> = {
   dark: {
     background: '#0d0f11',
-    surface: '#16191c',
-    surfaceRaised: '#1f2327',
+    surface: '#15181b',
+    surfaceRaised: '#1d2125',
     border: '#2a2f34',
     text: '#f2efe8',
-    textMuted: '#9a9ea4',
+    textMuted: '#8d9196',
     accent: '#e3b34a',
     onAccent: '#0d0f11',
-    danger: '#ff8f7f',
-    participants: ['#6db3ff', '#ff83ad', '#7fd492'],
+    danger: '#ff7a6b',
+    participants: [SPECTRUM.blue, SPECTRUM.orange, '#7fd492'],
+    control: '#1d2125',
+    press: '#2a2f35',
+    pop: '#1d2125',
   },
   light: {
     background: '#f5f3ee',
-    surface: '#ffffff',
-    surfaceRaised: '#ece9e1',
+    surface: '#ebe7df',
+    surfaceRaised: '#e1dcd2',
     border: '#dedad2',
-    text: '#15171a',
-    textMuted: '#5f646b',
+    text: '#0d0f11',
+    textMuted: '#6e6b65',
     accent: '#b5851c',
     onAccent: '#ffffff',
-    danger: '#c2412f',
-    participants: ['#1f6fd1', '#c2306a', '#2e8a48'],
+    danger: '#c8402f',
+    participants: ['#2f6fe4', '#d9772a', '#2e8a48'],
+    control: '#e1dcd2',
+    press: '#d6d0c4',
+    pop: '#fbfaf7',
   },
 };
 

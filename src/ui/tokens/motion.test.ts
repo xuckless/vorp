@@ -21,8 +21,8 @@ describe('motion tokens', () => {
   });
 
   test('entrances ease out, moves ease in and out', () => {
-    expect(timing('base', 'enter', false).easing).toEqual([0.23, 1, 0.32, 1]);
-    expect(timing('base', 'move', false).easing).toEqual([0.77, 0, 0.175, 1]);
+    expect(timing('base', 'enter', false).easing).toEqual([0.16, 1, 0.3, 1]);
+    expect(timing('base', 'move', false).easing).toEqual([0.65, 0, 0.35, 1]);
   });
 
   test('rubber band follows less than the drag and keeps its sign', () => {
