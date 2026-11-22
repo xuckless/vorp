@@ -18,7 +18,7 @@ mode applies: reach breadth first, harden in phase 7.
 - [ ] ESLint import-boundary rule (`core` imports nothing outward); Prettier
 - [ ] Replace the placeholder Expo icons and splash image with Vorp's own
 - [x] `bun test` running with one passing reducer test
-- [ ] `THIRD_PARTY_NOTICES.md` with the first entries
+- [x] `THIRD_PARTY_NOTICES.md` with the first entries
 - [ ] `.env.example`; `README.md` stub
 
 ## Phase 1: Prove the pipeline (Sun 22)
@@ -75,22 +75,25 @@ Verified live on 21 November unless noted. Findings are under "Hands-free turns"
 
 ## Phase 3: Design system and effects (Tue 24)
 
-- [ ] Tokens module: colour (graphite, gold, participant hues), type, spacing, radius; light and
-      dark
-- [ ] Motion tokens and helpers for the 19 motion rules (durations, easings, press scale, exit
+- [x] Tokens module: colour (graphite, gold, participant hues), type, spacing, radius; light and
+      dark (values provisional until the design prototype)
+- [x] Motion tokens and helpers for the 19 motion rules (durations, easings, press scale, exit
       ratio, stagger); reduced-motion switch
 - [ ] Primitives: `Pressable` (0.97), `Text`, `Surface`, `IconButton`, `Sheet`, `Popover`, `Chip`
-- [ ] Slot registry: typed contracts for `thinkingIndicator`, `voiceVisualiser`, `agentAvatar`,
+- [x] Slot registry: typed contracts for `thinkingIndicator`, `voiceVisualiser`, `agentAvatar`,
       `messageSurface`, `captionTransition`; the registry table; plain stand-ins for each
-- [ ] Copy vendor engines from the wallpaper project into `src/ui/effects/vendor`: thinking-orbs,
+- [x] Copy vendor engines from the wallpaper project into `src/ui/effects/vendor`: thinking-orbs,
       border-beam, distortion-waves, bot-avatars, voice-ring. Preact → React, keep licence files,
       add notices
-- [ ] Wrap each engine as a slot implementation; no app code imports a vendor path
-- [ ] Drive the voice ring from our `AudioInput` / `AudioOutput` levels instead of its own
-      microphone hook
-- [ ] Expo DOM component wrappers so the same effects render on native
-- [ ] Effects pause offscreen, when the app is backgrounded, and under reduced motion
-- [ ] Gallery route (dev only): every slot implementation and primitive on one page
+- [x] Wrap each engine as a slot implementation; no app code imports a vendor path (ESLint rule)
+- [x] Drive the voice ring from our `AudioInput` / `AudioOutput` levels instead of its own
+      microphone hook (the slot takes a level; `AudioInput` still needs a `level()`)
+- [ ] Expo DOM component wrappers so the same effects render on native (built and render on
+      web; never run on a device or emulator)
+- [x] Effects pause offscreen, when the app is backgrounded, and under reduced motion (web:
+      reduced motion and offscreen checked in headless Chromium; backgrounding and native not run)
+- [ ] Gallery route (dev only): every slot implementation and primitive on one page (slots done,
+      `/gallery`; primitives not built yet)
 
 ## Phase 4: The conversation experience (Wed 25)
 

@@ -318,6 +318,43 @@ real `gemini-3.8-live` sessions with `bun run e2e:live`.
   view. Surfaces that wear an effect (caption cards with the glow, the centre stage) are
   therefore rendered inside the DOM component on native, not wrapped around native views.
 
+### Design system plumbing (phase 3, 21 November 2026)
+
+- **Layout**: `src/ui/tokens` (`theme.ts` colour / type / spacing / radius, `motion.ts` pure
+  motion tokens and helpers, `reduced-motion.ts` the switch), `src/ui/slots` (contracts,
+  stand-ins, registry), `src/ui/effects` (engine-backed slot implementations, `dom/` Expo DOM
+  components, `vendor/` the copied engines). Token values are provisional until the design
+  prototype replaces them.
+- **Slots**: `thinkingIndicator`, `voiceVisualiser`, `agentAvatar`, `messageSurface`,
+  `captionTransition`. `SLOT_REGISTRY` in `src/ui/slots/registry.tsx` is the one table;
+  `DEFAULT_SLOTS` picks, `chooseSlot` switches at runtime. Every slot has a `plain` stand-in.
+  Contracts are plain data so they can cross to a DOM component, except `messageSurface`'s
+  `children`. ESLint forbids importing `@/ui/effects` or any `vendor` path outside `src/ui`.
+- **One DOM component per engine** (`'use dom'`, `src/ui/effects/dom/*Dom.tsx`), used on both
+  platforms: on web it renders inline, on native in `@expo/dom-webview` (bundled with SDK 58, no
+  install). The `dom` prop sizes the web view. Inside a web view the page is made transparent.
+- **Deviation from "Platforms" above, for the owner to confirm**: the border beam is a DOM
+  layer laid *over* the native caption card (pointer events off), so the card stays native and
+  `messageSurface` can take children. The distortion wave needs to picture the DOM it crosses,
+  so `captionTransition` takes the two caption texts and draws them inside its DOM component.
+- **Voice ring level**: the ring is never given a stream; the slot takes `level` as a number or
+  a getter. On web the getter goes straight to the engine (sampled per frame, no React renders);
+  on native it is sampled at 20 Hz and sent as numbers (`effects/level.native.ts`).
+  `useMicrophone` was removed from the vendored copy. The listening level is computed from the
+  microphone's PCM chunks and the speaking level comes from `AudioOutput.level()`
+  (`features/conversation/levels.ts`).
+- **The avatar talks**: the slot's `talk` level opens the bot's mouth while the interpreter
+  speaks. This is the one behavioural change to a vendored engine (`bot-avatars`, marked "Vorp").
+- **Engines keep their own colours.** The ring's spectrum, the bot's palette and the orb's ink
+  are used as Ultra Reactivate ships them; a slot's `color` prop overrides only when given.
+- **Pausing**: `useEffectsPaused` = reduced motion (user switch or system) or app not active
+  (`AppState`, which follows page visibility on web); it sets each engine's `paused` /
+  `active`. Offscreen pausing is the engines' own IntersectionObserver, which works on web but
+  inside a native web view sees only the web view's own viewport.
+- **Vendored code** is not linted and opts out of the React Compiler with `'use no memo'` (it
+  writes refs during render). The thinking orb is tuned at 64/32/20 px only; other sizes draw at
+  the nearest tuned size below and scale with CSS.
+
 ### Conversation
 
 - **One shared device**: one microphone, one speaker, placed between the participants.
@@ -366,8 +403,14 @@ tool declaration. Turning one off removes its row's contribution; no feature cod
   Thinking orbs take over while a translation is being produced.
 - **Golden glow** (border beam) marks the caption card being spoken.
 - **Distortion wave** carries the original caption card into its translation.
-- **Look**: graphite base with gold as the single brand accent; each participant has an accent
-  hue. Light and dark both ship.
+- **Look** (owner, 21 November 2026): sleek and minimal. Graphite base, Geist in two weights, the
+  real Ultra Reactivate widgets as the only ornament, plain text and space for everything else.
+  The stage is one column: wordmark and languages, the ring with the avatar inside, one status
+  line, the caption being spoken, one button per person. Light and dark both ship.
+- **Avoid, unless there is a very strong reason**: tags and pills, italics, serif display faces,
+  negative kerning, detailed UI, dividers, colour shades and opacities, bordered containers,
+  diagrams, redundant text, code breadcrumbs, section numbering, eyebrows, dithering, ASCII
+  images, squircles, mono fonts, all-caps subtitles, gradient backgrounds, periods in titles.
 
 ### Data and licence
 
