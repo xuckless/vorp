@@ -1,6 +1,6 @@
 // The aurora, ported from the owner's Vorp design (the-wallpaper-project src/vorp/Aurora.tsx) to React.
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { loop, settle, SPECTRUM, type Light } from './light';
 
@@ -134,10 +134,20 @@ function start2D(canvas: HTMLCanvasElement, light: Light) {
   return { draw, dispose: () => {} };
 }
 
-export function Aurora({ light }: { light: Light }) {
+/** A phone that asked to save data, or has little memory or few cores: the guest gets the plain background. */
+const constrained = () => {
+  const n = navigator as Navigator & { connection?: { saveData?: boolean }; deviceMemory?: number };
+  return !!n.connection?.saveData || (n.deviceMemory ?? 8) <= 2 || (navigator.hardwareConcurrency ?? 8) <= 2;
+};
+
+/** `defer` (the guest's cold page): first paint is the plain background; the light fades in once the
+ *  page is idle, and never on a constrained phone. */
+export function Aurora({ light, defer = false }: { light: Light; defer?: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const [skip] = useState(() => defer && constrained());
 
   useEffect(() => {
+    if (skip) return;
     const canvas = ref.current!;
     const host = canvas.parentElement!;
     // One canvas pixel per CSS pixel: the light is soft, so device pixels would only cost.
@@ -145,21 +155,48 @@ export function Aurora({ light }: { light: Light }) {
       canvas.width = Math.max(8, Math.ceil(host.clientWidth));
       canvas.height = Math.max(8, Math.ceil(host.clientHeight));
     };
-    const ro = new ResizeObserver(size);
-    ro.observe(host);
-    size();
-    const painter = startGL(canvas, light) ?? start2D(canvas, light);
-    const stop = loop(30, (t, dt) => {
-      settle(light, dt);
-      painter.draw(t);
-    });
-    return () => {
-      stop();
-      ro.disconnect();
-      painter.dispose();
+    let stop = () => {};
+    const begin = () => {
+      const ro = new ResizeObserver(size);
+      ro.observe(host);
+      size();
+      const painter = startGL(canvas, light) ?? start2D(canvas, light);
+      const halt = loop(30, (t, dt) => {
+        settle(light, dt);
+        painter.draw(t);
+      });
+      stop = () => {
+        halt();
+        ro.disconnect();
+        painter.dispose();
+      };
     };
-  }, [light]);
+    if (!defer) {
+      begin();
+      return () => stop();
+    }
+    // Deferred: nothing is compiled or drawn until the page is idle, then the light fades in.
+    canvas.style.opacity = '0';
+    const w = window as Window & { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
+    let fade: ReturnType<typeof setTimeout> | undefined;
+    const show = () => {
+      begin();
+      fade = setTimeout(() => {
+        canvas.style.transition = 'opacity 900ms ease-out';
+        canvas.style.opacity = '1';
+      }, 300);
+    };
+    const idle = w.requestIdleCallback ? w.requestIdleCallback(show, { timeout: 1500 }) : undefined;
+    const late = idle === undefined ? setTimeout(show, 900) : undefined;
+    return () => {
+      if (idle !== undefined) w.cancelIdleCallback?.(idle);
+      clearTimeout(late);
+      clearTimeout(fade);
+      stop();
+    };
+  }, [light, defer, skip]);
 
+  if (skip) return null;
   return <canvas ref={ref} className="vp-aurora" aria-hidden="true" />;
 }
 
