@@ -2,6 +2,7 @@
 // src/services knows which implementation runs.
 
 import type { People, Pcm, SessionErrorKind, SessionSettings, UtteranceId } from '@/core/session';
+import type { Outbound, PairEvent, PairRole } from '@/core/pairing';
 import type { Embedding } from '@/core/voiceprint';
 
 export type Unsubscribe = () => void;
@@ -99,6 +100,60 @@ export interface VoiceEmbedder {
   load(): Promise<void>;
   /** Embeds in the order called. Rejects when unavailable or the model fails. */
   embed(pcm: Pcm): Promise<Embedding>;
+}
+
+/** What the pairing socket reports: the room's own messages, and what the other phone relayed. */
+export type PairingLinkEvent = Extract<
+  PairEvent,
+  {
+    type:
+      | 'welcome'
+      | 'peerJoined'
+      | 'peerAway'
+      | 'peerBack'
+      | 'ended'
+      | 'refused'
+      | 'dropped'
+      | 'rejoining'
+      | 'lost'
+      | 'peerSpeaking'
+      | 'peerTurn'
+      | 'peerCaption'
+      | 'peerAudio'
+      | 'peerPlayback';
+  }
+>;
+
+/**
+ * One phone's link to a pairing room on the token server (docs/pairing-protocol.md). It keeps the
+ * room's keys, pings, and rejoins by itself after a drop while paired; everything else is the
+ * caller's.
+ */
+export interface PairingLink {
+  /** Host: make a room. Rejects when the server refuses (busy, rate limited) or cannot be reached. */
+  create(): Promise<{ code: string; expiresIn: number }>;
+  /** Open the room's socket and say hello (the host with its key from `create`). */
+  open(role: PairRole, code: string, language: string): void;
+  send(message: Outbound): void;
+  /** This phone's translated audio, 24 kHz 16-bit mono, as it arrives. */
+  sendAudio(pcm: Pcm): void;
+  /** Stop for both: say `end`, then close. */
+  end(): void;
+  /** Close without a word; nothing more is reported. */
+  close(): void;
+  onEvent(listener: (e: PairingLinkEvent) => void): Unsubscribe;
+}
+
+/** Keeps the screen on while it is wanted. */
+export interface WakeLock {
+  set(on: boolean): void;
+}
+
+/** The join and live moments: a short sound and a tap of haptics. */
+export interface Cues {
+  /** Inside a user gesture: get the sound ready, so later cues play on iPhone too. */
+  prime(): void;
+  play(kind: 'joined' | 'live'): void;
 }
 
 /** String values by key, on the device only. */
