@@ -2,6 +2,8 @@
 # End-to-end check against the real Gemini Live API, by hand (not part of `bun test`).
 # Speaks an English then a French sentence into the web build through Chromium's fake
 # microphone and prints the page text as captions arrive. Costs real API usage.
+# E2E_GAP=<seconds> sets the silence between the two speakers (default 9; 1.5 overlaps the
+# second speaker with the first translation).
 # Needs: GEMINI_API_KEY in .env, zig 0.17, chromium, ffmpeg.   Run: bun run e2e:live
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -13,7 +15,7 @@ chromium="$(command -v chromium-browser || command -v chromium || command -v goo
 # detection ignores robotic voices such as espeak's.
 fx="$root/scripts/e2e/fixtures"
 ffmpeg -loglevel error -y -f lavfi -t 3 -i anullsrc=r=48000:cl=mono -i "$fx/en.wav" \
-  -f lavfi -t 9 -i anullsrc=r=48000:cl=mono -i "$fx/fr.wav" -f lavfi -t 25 -i anullsrc=r=48000:cl=mono \
+  -f lavfi -t "${E2E_GAP:-9}" -i anullsrc=r=48000:cl=mono -i "$fx/fr.wav" -f lavfi -t 25 -i anullsrc=r=48000:cl=mono \
   -filter_complex "[1]aresample=48000[a];[3]aresample=48000[b];[0][a][2][b][4]concat=n=5:v=0:a=1" -ac 1 -ar 48000 "$tmp/talk.wav"
 
 cd "$root"

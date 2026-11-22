@@ -45,7 +45,16 @@ export type TurnDetection = 'auto' | 'manual';
  * A row of the overlap policy table: what new speech does to a translation being spoken.
  * Only 'queue' exists; ducking and barge-in become further values and rows.
  */
-export type OverlapPolicy = { id: string; speechDuringPlayback: 'queue' };
+export type OverlapPolicy = {
+  id: string;
+  speechDuringPlayback: 'queue';
+  /**
+   * The model does not listen while it produces a reply (verified against gemini-3.8-live with
+   * NO_INTERRUPTION), so microphone audio is held back meanwhile and sent when the reply is
+   * complete. At most this many seconds are held before they are sent anyway.
+   */
+  holdSeconds: number;
+};
 
 /** Data from `src/config`, handed to the reducer; core never imports config. */
 export type SessionSettings = {
@@ -109,6 +118,9 @@ export type Effect =
   | { type: 'closeAudio' }
   /** Start / stop sending microphone audio to the translator. Derived, see `micOpen`. */
   | { type: 'startCapture' }
+  /** Keep microphone audio back instead of sending it; `releaseAudio` sends what was kept, in order. */
+  | { type: 'holdAudio'; maxSeconds: number }
+  | { type: 'releaseAudio' }
   | { type: 'stopCapture' }
   | { type: 'beginTurn' }
   | { type: 'endTurn' }
@@ -140,6 +152,17 @@ export function micOpen(s: Session): boolean {
   if (s.settings.detection === 'manual') return false;
   if (s.settings.pauseMicWhileSpeaking && s.utterances.some((u) => u.status === 'speaking')) return false;
   return true;
+}
+
+/**
+ * Whether the model is producing a reply: the oldest unanswered utterance has finished being
+ * captured. Derived, like `micOpen`; `transition` turns its changes into hold / release effects.
+ */
+export function replying(s: Session): boolean {
+  // Manual turns are bracketed by the client's own activity signals, so nothing is held there.
+  if (s.settings.detection !== 'auto') return false;
+  const head = s.utterances.find((u) => u.id === s.awaitingResponse[0]);
+  return head !== undefined && head.status !== 'capturing';
 }
 
 /** The languages an utterance is being translated into. */
@@ -418,7 +441,8 @@ function step(s: Session, e: SessionEvent): Transition {
  * stopping it is computed here once instead of in every case: stops go first, starts last.
  */
 export function transition(s: Session, e: SessionEvent): Transition {
-  const [next, effects] = step(s, e);
+  const [next, stepped] = step(s, e);
+  const effects = [...stepped, ...holdEffects(s, next)];
   const was = micOpen(s);
   const now = micOpen(next);
   if (was === now) return [next, effects];
@@ -427,4 +451,11 @@ export function transition(s: Session, e: SessionEvent): Transition {
   const flush =
     next.connection === 'open' && next.settings.detection === 'auto' && !effects.some((x) => x.type === 'endTurn');
   return [next, [{ type: 'stopCapture' }, ...effects, ...(flush ? [{ type: 'endTurn' } as const] : [])]];
+}
+
+function holdEffects(s: Session, next: Session): Effect[] {
+  const was = replying(s);
+  const now = replying(next);
+  if (was === now) return [];
+  return now ? [{ type: 'holdAudio', maxSeconds: next.settings.overlap.holdSeconds }] : [{ type: 'releaseAudio' }];
 }

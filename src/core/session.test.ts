@@ -5,6 +5,7 @@ import {
   initialSession,
   isEcho,
   micOpen,
+  replying,
   playbackQueue,
   targetLanguages,
   transition,
@@ -20,7 +21,7 @@ const people: Participant[] = [
   { id: 'b', name: 'Béa', language: 'fr', voice: 'Charon' },
 ];
 
-const queue = { id: 'queue', speechDuringPlayback: 'queue' } as const;
+const queue = { id: 'queue', speechDuringPlayback: 'queue', holdSeconds: 20 } as const;
 const handsFree: SessionSettings = { detection: 'auto', overlap: queue, pauseMicWhileSpeaking: false, echoMatch: 0.6 };
 const manual: SessionSettings = { ...handsFree, detection: 'manual' };
 
@@ -121,7 +122,7 @@ describe('error paths', () => {
       ],
       freshHandsFree(),
     );
-    expect(types(log[6])).toEqual(['stopCapture', 'finishPlayback', 'connect']);
+    expect(types(log[6])).toEqual(['stopCapture', 'finishPlayback', 'connect', 'releaseAudio']);
     expect(types(log[7])).toEqual(['startCapture']);
     expect(statuses(s)).toEqual(['queued']);
     expect(s.connection).toBe('open');
@@ -240,7 +241,8 @@ describe('hands-free (automatic detection)', () => {
 
   test('detected speech opens an utterance and the detected language picks the speaker', () => {
     const [s, log] = run([...open, ...said('Bonjour à tous', 'fr-FR')], freshHandsFree());
-    expect(log.slice(2).flat()).toEqual([]); // no turn signals: the server ends the turn
+    // No turn signals: the server ends the turn. The model then replies and does not listen, so audio is held.
+    expect(log.slice(2).flat()).toEqual([{ type: 'holdAudio', maxSeconds: 20 }]);
     expect(s.utterances[0]).toMatchObject({ speakerId: 'b', routedBy: 'language', language: 'fr-FR', status: 'translating' });
     expect(targetLanguages(s, s.utterances[0])).toEqual(['en']);
   });
@@ -374,7 +376,25 @@ describe('hands-free (automatic detection)', () => {
       freshHandsFree(),
     );
     expect(s.utterances[0]).toMatchObject({ status: 'queued', error: 'interrupted' });
-    expect(types(log[log.length - 1])).toEqual(['finishPlayback']);
+    expect(types(log[log.length - 1])).toEqual(['finishPlayback', 'releaseAudio']);
+  });
+});
+
+describe('audio hold while the model replies', () => {
+  test('held from the end of a turn until its reply completes, then released', () => {
+    const [s, log] = run([...open, ...said('Hello', 'en'), { type: 'outputAudio', pcm }, { type: 'turnComplete' }], freshHandsFree());
+    expect(types(log.flat())).toEqual(['openAudio', 'connect', 'startCapture', 'holdAudio', 'enqueuePlayback', 'finishPlayback', 'releaseAudio']);
+    expect(replying(s)).toBe(false);
+    expect(micOpen(s)).toBe(true); // the microphone never closed
+  });
+
+  test('speech sent after the release becomes the next utterance, spoken after the first', () => {
+    const [s] = run(
+      [...open, ...said('Hello', 'en'), { type: 'outputAudio', pcm }, { type: 'turnComplete' }, ...said('Bonjour', 'fr'), { type: 'outputAudio', pcm }],
+      freshHandsFree(),
+    );
+    expect(statuses(s)).toEqual(['queued', 'queued']);
+    expect(s.utterances.map((u) => u.speakerId)).toEqual(['a', 'b']);
   });
 });
 
@@ -394,7 +414,7 @@ describe('push-to-talk overrides detection', () => {
     expect(s.utterances).toHaveLength(1);
     expect(s.utterances[0]).toMatchObject({ speakerId: 'b', routedBy: 'button', status: 'translating' });
     expect(types(log[2])).toEqual(['beginTurn']); // the microphone is already open
-    expect(types(log[6])).toEqual(['endTurn']);
+    expect(types(log[6])).toEqual(['endTurn', 'holdAudio']);
     expect(s.held).toBeUndefined();
   });
 

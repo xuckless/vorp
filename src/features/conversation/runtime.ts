@@ -6,11 +6,13 @@ import {
   transition,
   type Effect,
   type Participant,
+  type Pcm,
   type Session,
   type SessionErrorKind,
   type SessionEvent,
   type SessionSettings,
 } from '@/core/session';
+import { LIVE_AUDIO } from '@/config/models';
 import { createStore, type Store } from '@/core/store';
 import type { Services } from '@/services';
 import { ServiceError } from '@/services/types';
@@ -33,6 +35,13 @@ export function createRuntime(services: Services, participants: Participant[], s
   const store = createStore(initialSession(participants, settings));
   /** The live microphone-to-translator pipe while the reducer says the microphone is open. */
   let pipe: (() => void) | null = null;
+
+  /** Microphone audio kept back while the model replies; null when audio goes straight out. */
+  let held: { chunks: Pcm[]; max: number } | null = null;
+
+  function release() {
+    held?.chunks.splice(0).forEach((pcm) => translator.sendAudio(pcm));
+  }
 
   function dispatch(event: SessionEvent) {
     const [next, effects] = transition(store.get(), event);
@@ -64,11 +73,23 @@ export function createRuntime(services: Services, participants: Participant[], s
         return;
       case 'startCapture':
         pipe?.();
-        pipe = input.onChunk((pcm) => translator.sendAudio(pcm));
+        pipe = input.onChunk((pcm) => {
+          if (held === null) return translator.sendAudio(pcm);
+          held.chunks.push(pcm);
+          if (held.chunks.length > held.max) release();
+        });
         return;
       case 'stopCapture':
         pipe?.();
         pipe = null;
+        if (held !== null) held.chunks = [];
+        return;
+      case 'holdAudio':
+        held ??= { chunks: [], max: (effect.maxSeconds * 1000) / LIVE_AUDIO.inputChunkMs };
+        return;
+      case 'releaseAudio':
+        release();
+        held = null;
         return;
       case 'beginTurn':
         translator.beginTurn();

@@ -136,14 +136,19 @@ test('hands-free: the microphone streams from connect, the server ends the turn'
   f.server({ type: 'inputTranscript', text: 'Bonjour à tous', language: 'fr' });
   f.server({ type: 'speechEnded' });
   f.server({ type: 'outputAudio', pcm: new Int16Array(2400) });
-  f.mic(new Int16Array(1600)); // still listening while the translation is produced
+  // Still listening while the translation is produced: the model is not, so the audio is held.
+  f.mic(new Int16Array(1600));
+  f.mic(new Int16Array(1600));
   expect(rt.store.get().utterances[0]).toMatchObject({ speakerId: 'p2', status: 'queued' });
-  expect(f.calls).toEqual([
-    'input.open',
-    'output.open',
-    'translator.connect auto',
+  expect(f.calls).toEqual(['input.open', 'output.open', 'translator.connect auto', 'translator.sendAudio 1600', 'output.enqueue u1']);
+
+  // The reply is complete: what was held goes out, in order, and the microphone is live again.
+  f.server({ type: 'turnComplete' });
+  f.mic(new Int16Array(1600));
+  expect(f.calls.slice(5)).toEqual([
+    'output.finish u1',
     'translator.sendAudio 1600',
-    'output.enqueue u1',
+    'translator.sendAudio 1600',
     'translator.sendAudio 1600',
   ]);
 });

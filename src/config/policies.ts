@@ -8,7 +8,9 @@ import type { OverlapPolicy, SessionSettings, TurnDetection } from '@/core/sessi
  * translation while capturing the next, then speaks it in order. Ducking and barge-in are
  * future rows (after the hackathon).
  */
-export const OVERLAP_POLICIES = [{ id: 'queue', speechDuringPlayback: 'queue' }] as const satisfies readonly OverlapPolicy[];
+export const OVERLAP_POLICIES = [
+  { id: 'queue', speechDuringPlayback: 'queue', holdSeconds: 20 },
+] as const satisfies readonly OverlapPolicy[];
 
 export type OverlapPolicyId = (typeof OVERLAP_POLICIES)[number]['id'];
 
