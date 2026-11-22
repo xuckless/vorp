@@ -16,7 +16,7 @@ export function micLevel(pcm: Int16Array): number {
   return pcm.length === 0 ? 0 : Math.tanh((Math.sqrt(sum / pcm.length) / 0x8000) * MIC_GAIN);
 }
 
-export function createLevels({ input, output }: Services): Levels {
+export function createLevels({ input, output }: Pick<Services, 'input' | 'output'>): Levels {
   let mic = 0;
   const off = input.onChunk((pcm) => {
     mic = micLevel(pcm);

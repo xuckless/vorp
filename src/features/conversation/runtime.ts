@@ -61,7 +61,7 @@ export type SessionRunner = {
  * Runs a session's effects against the services and feeds the translator's events back through
  * `dispatch`. Shared by the one-device runtime below and a paired phone's (features/pair).
  */
-export function createSessionRunner(services: Services, dispatch: (event: SessionEvent) => void, options: SessionRunnerOptions = {}): SessionRunner {
+export function createSessionRunner(services: Omit<Services, 'recap'>, dispatch: (event: SessionEvent) => void, options: SessionRunnerOptions = {}): SessionRunner {
   const { input, output, translator } = services;
   const { onArchive = () => {}, ownerPrint = () => undefined, interpreterPrints = NO_PRINTS, heardVoice = (p: People) => p.owner.voice } = options;
   const voice = createVoiceJudge(services.voice, ownerPrint, dispatch, interpreterPrints);
