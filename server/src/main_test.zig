@@ -10,6 +10,11 @@ const Fixture = struct {
     app: anole.Server(app_main.App),
 
     fn start(self: *Fixture, token_rate_limit: u32) !void {
+        return self.startBehind(token_rate_limit, null);
+    }
+
+    /// `trusted`: the proxies in front, as `ANOLE_PROXY_TRUSTED` gives them in production.
+    fn startBehind(self: *Fixture, token_rate_limit: u32, trusted: ?[]const []const u8) !void {
         const cfg: Config = .{
             .gemini_api_key = .init("test-key"),
             .gemini_auth_tokens_url = "http://127.0.0.1:1/auth_tokens",
@@ -17,7 +22,7 @@ const Fixture = struct {
             .token_rate_limit = token_rate_limit,
         };
         self.state = .{ .api_key = cfg.gemini_api_key, .auth_tokens_url = cfg.gemini_auth_tokens_url, .generate_url = cfg.gemini_generate_url };
-        self.app = try anole.Server(app_main.App).init(std.testing.allocator, .{ .executors = .exact(1), .errors = .json }, &self.state);
+        self.app = try anole.Server(app_main.App).init(std.testing.allocator, .{ .executors = .exact(1), .errors = .json, .proxy = .{ .trusted = trusted } }, &self.state);
         self.limiter = .init(std.testing.allocator, self.app.io(), .{});
         try app_main.routes(&self.app, cfg, self.limiter.limiter());
     }
@@ -80,6 +85,25 @@ test "POST /token is rate limited per client" {
     var limited = try t.post("/token", .{});
     defer limited.deinit();
     try limited.expectStatus(.too_many_requests);
+}
+
+test "behind a trusted proxy, each forwarded client has its own limit" {
+    var f: Fixture = undefined;
+    try f.startBehind(1, &.{"loopback"});
+    defer f.stop();
+    var t = try anole.testing.client(&f.app);
+    defer t.deinit();
+
+    // The test client's peer is 127.0.0.1: the proxy.
+    var first = try t.post("/token", .{ .headers = &.{.{ "X-Forwarded-For", "198.51.100.7" }} });
+    defer first.deinit();
+    try first.expectStatus(.bad_gateway);
+    var other = try t.post("/token", .{ .headers = &.{.{ "X-Forwarded-For", "198.51.100.8" }} });
+    defer other.deinit();
+    try other.expectStatus(.bad_gateway);
+    var again = try t.post("/token", .{ .headers = &.{.{ "X-Forwarded-For", "198.51.100.7" }} });
+    defer again.deinit();
+    try again.expectStatus(.too_many_requests);
 }
 
 test "POST /recap refuses an empty conversation and is a 502 when Gemini cannot be reached" {

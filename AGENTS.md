@@ -232,8 +232,13 @@ redirects). The tables live in `src/config` (`models.ts`, `voices.ts`, `language
 - **Token server**: `server/` depends on Anole `v0.6.0` (git URL in `build.zig.zon`) and needs
   **Zig 0.17.0**; Zig 0.16 cannot build Anole. `POST /token` sends `{"uses":1}` and keeps
   Google's expiry defaults, answers `{token, expireTime}` with `Cache-Control: no-store`, and
-  allows any CORS origin for the dev server. Not yet: rate limit, locking the token to the model
-  (`bidiGenerateContentSetup` / `fieldMask`), serving `dist/`.
+  allows the dev server's CORS origin. `/token` and `/recap` share a per-client limit
+  (`TOKEN_RATE_LIMIT`, 20 a minute), keyed on the client address. Behind the TLS proxy or load
+  balancer that address is the proxy's unless Anole trusts it: set `ANOLE_PROXY_TRUSTED` (its
+  addresses or CIDR ranges) or `ANOLE_DEPLOYMENT=behind_proxy`, and Anole takes the client from
+  `X-Forwarded-For`. Visitors behind one NAT still share a bucket, so raise `TOKEN_RATE_LIMIT`
+  for the booth. Not yet: locking the token to the model (`bidiGenerateContentSetup` /
+  `fieldMask`).
 - Platform split: implementations are `*.web.ts` / `*.native.ts`; `tsconfig` sets
   `moduleSuffixes: [".web", ""]` so `tsc` resolves the web file and checks both.
 - TypeScript 6 includes no global `types` by default; test files start with
