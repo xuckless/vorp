@@ -17,5 +17,6 @@ export { Beam, Glow, StopButton } from './Glow';
 export { OrbHalo, WritingOrb } from './Halo';
 export { createLight, loop, settle, SIDE, SPECTRUM, tune, type Light, type Phase, type Who } from './light';
 export { Mark } from './Mark';
+export { QrCode } from './QrCode';
 export { Ring } from './Ring';
 export { CSS } from './style';
