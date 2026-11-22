@@ -4,6 +4,9 @@
 
 import type { Ref } from 'react';
 
+import '../effects/vendor/blobatar/motion.css';
+import '../effects/vendor/blobatar/gaze.css';
+
 import { happy, idle, sad, sleepy, thinking, unsure } from '../effects/vendor/blobatar/expression';
 import { Blobatar } from '../effects/vendor/blobatar/react';
 

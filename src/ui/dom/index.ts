@@ -4,9 +4,6 @@
 // It is the one place outside src/ui/effects that reaches the vendored engines. The stubbed-out
 // language swap (./Swapper.tsx) is deliberately not exported.
 
-import '../effects/vendor/blobatar/motion.css';
-import '../effects/vendor/blobatar/gaze.css';
-
 export { Aurora } from './Aurora';
 export { Blob, type Mood, type Tint } from './blob';
 export { CaptionCard, ProblemCard, QuietCard } from './Caption';
@@ -16,6 +13,7 @@ export { fontFaces } from './fonts';
 export { Beam, Glow, StopButton } from './Glow';
 export { OrbHalo, WritingOrb } from './Halo';
 export { createLight, loop, settle, SIDE, SPECTRUM, tune, type Light, type Phase, type Who } from './light';
+export { ringFor } from './layout';
 export { Mark } from './Mark';
 export { QrCode } from './QrCode';
 export { Ring } from './Ring';

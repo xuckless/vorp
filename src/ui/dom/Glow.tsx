@@ -24,10 +24,10 @@ export function Beam({ radius, dark, active = true }: { radius: number; dark: bo
 }
 
 /** Ultra Reactivate's round stop button: a drawn square inside a border beam. */
-export function StopButton({ dark, onClick }: { dark: boolean; onClick: () => void }) {
+export function StopButton({ dark, onClick, label = 'Stop' }: { dark: boolean; onClick: () => void; label?: string }) {
   return (
     <BorderBeam className="vp-stop-host" size="sm" colorVariant="colorful" theme={dark ? 'dark' : 'light'} borderRadius={32}>
-      <button className="vp-stop vp-frost" aria-label="Stop" title="Stop" onClick={onClick}>
+      <button className="vp-stop vp-frost" aria-label={label} title={label} onClick={onClick}>
         <span className="vp-stop-sq" />
       </button>
     </BorderBeam>
