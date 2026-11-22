@@ -137,6 +137,37 @@ describe('error paths', () => {
     expect(s.connection).toBe('failed');
     expect(s.error?.kind).toBe('token');
   });
+
+  test('a failed reconnect releases the microphone and keeps what was heard', () => {
+    const [s, log] = run(
+      [
+        ...open,
+        ...said('Hello there', 'en'),
+        { type: 'outputTranscript', text: 'Bonjour' },
+        { type: 'outputAudio', pcm },
+        { type: 'connectionLost', kind: 'socket', message: 'drop' },
+        { type: 'connectFailed', kind: 'token', message: 'expired' },
+      ],
+      freshHandsFree(),
+    );
+    expect(types(log[8])).toEqual(['stopPlayback', 'disconnect', 'closeAudio', 'archive']);
+    expect(log[8].find((e) => e.type === 'archive')).toMatchObject({ utterances: [{ source: 'Hello there' }] });
+    expect(statuses(s)).toEqual(['failed']);
+  });
+
+  test('a microphone failure keeps what was heard', () => {
+    const [, log] = run([...open, ...said('Hello there', 'en'), { type: 'audioFailed', kind: 'mic', message: 'gone' }], freshHandsFree());
+    expect(types(log[5])).toContain('archive');
+  });
+
+  test('a failed conversation is kept once: stop after it archives nothing, start begins anew', () => {
+    const [s, log] = run(
+      [...open, ...said('Hello there', 'en'), { type: 'audioFailed', kind: 'mic', message: 'gone' }, { type: 'stop' }, { type: 'start' }],
+      freshHandsFree(),
+    );
+    expect(log[6]).toEqual([]);
+    expect(s.utterances).toEqual([]);
+  });
 });
 
 describe('push-to-talk (manual detection)', () => {

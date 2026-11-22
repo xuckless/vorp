@@ -249,6 +249,17 @@ function failInFlight(s: Session, error: string): Session {
 /** Ends the conversation's resources; the microphone stop is added by `transition`. */
 const RELEASE: Effect[] = [{ type: 'stopPlayback' }, { type: 'disconnect' }, { type: 'closeAudio' }];
 
+/**
+ * End the conversation, stopped or failed: fail what is in flight, release its resources and
+ * keep it if something was heard. A failed conversation is over too; 'start' begins a new one.
+ */
+function end(s: Session, connection: 'idle' | 'failed', reason: string, error: SessionError | undefined): Transition {
+  const ended: Session = { ...failInFlight(s, reason), connection, error };
+  const heard = ended.utterances.filter((u) => u.source !== '');
+  const archive: Effect[] = heard.length > 0 ? [{ type: 'archive', participants: s.participants, utterances: heard }] : [];
+  return [ended, [...RELEASE, ...archive]];
+}
+
 /** Server output for the head arrived, so the server has ended that turn. */
 function turnEnded(s: Session, u: Utterance): Session {
   return u.status === 'capturing' ? patch(s, u.id, () => ({ status: 'translating' })) : s;
@@ -277,8 +288,8 @@ function step(s: Session, e: SessionEvent): Transition {
       if (s.connection === 'connecting' || s.connection === 'open' || s.connection === 'reconnecting') return [s, []];
       // openAudio runs inside the user gesture that sent 'start', which browsers require.
       return [
-        // A new conversation: the last one was archived when it stopped.
-        { ...s, connection: 'connecting', error: undefined, utterances: s.connection === 'idle' ? [] : s.utterances, awaitingResponse: s.connection === 'idle' ? [] : s.awaitingResponse },
+        // A new conversation: the last one was archived when it stopped or failed.
+        { ...s, connection: 'connecting', error: undefined, utterances: [], awaitingResponse: [] },
         [{ type: 'openAudio' }, { type: 'connect', participants: s.participants, settings: s.settings }],
       ];
 
@@ -286,13 +297,11 @@ function step(s: Session, e: SessionEvent): Transition {
       if (s.connection !== 'idle' && s.connection !== 'failed') return [s, []];
       return [{ ...s, participants: e.participants, settings: e.settings }, []];
 
-    case 'stop': {
+    case 'stop':
       if (s.connection === 'idle') return [s, []];
-      const ended = { ...failInFlight(s, 'stopped'), connection: 'idle' as const };
-      const heard = ended.utterances.filter((u) => u.source !== '');
-      const archive: Effect[] = heard.length > 0 ? [{ type: 'archive', participants: s.participants, utterances: heard }] : [];
-      return [ended, [...RELEASE, ...archive]];
-    }
+      // A failed conversation was already released and kept when it failed.
+      if (s.connection === 'failed') return [{ ...s, connection: 'idle' }, []];
+      return end(s, 'idle', 'stopped', s.error);
 
     case 'connected':
       if (s.connection !== 'connecting' && s.connection !== 'reconnecting') return [s, []];
@@ -300,7 +309,7 @@ function step(s: Session, e: SessionEvent): Transition {
 
     case 'connectFailed':
       if (s.connection !== 'connecting' && s.connection !== 'reconnecting') return [s, []];
-      return [{ ...s, connection: 'failed', error: { kind: e.kind, message: e.message } }, []];
+      return end(s, 'failed', e.message, { kind: e.kind, message: e.message });
 
     case 'connectionLost': {
       // Only an open connection reconnects by itself; a failed reconnect ends in 'failed'.
@@ -323,11 +332,8 @@ function step(s: Session, e: SessionEvent): Transition {
 
     case 'audioFailed': {
       // Without a microphone there is no conversation: end it and say why.
-      if (s.connection === 'idle') return [s, []];
-      return [
-        { ...failInFlight(s, e.message), connection: 'failed', error: { kind: e.kind, message: e.message } },
-        RELEASE,
-      ];
+      if (s.connection === 'idle' || s.connection === 'failed') return [s, []];
+      return end(s, 'failed', e.message, { kind: e.kind, message: e.message });
     }
 
     case 'pressTalk': {

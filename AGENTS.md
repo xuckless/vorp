@@ -364,7 +364,8 @@ real `gemini-3.8-live` sessions with `bun run e2e:live`.
   on the utterance being answered; it is shown under the caption and never spoken.
 - **The setup changes only between sessions**, with one `configure` event (participants and
   settings). The Live API takes the system instruction, tools and voice at session setup.
-- **A conversation is archived when it stops** (`archive` effect, only if something was heard),
+- **A conversation is archived when it stops or fails** (`archive` effect, only if something was
+  heard; a failure also releases the microphone and the socket),
   and `start` begins a new one. The history keeps text only, the newest 50, on the device.
 - **Recap**: `POST /recap` on the token server sends the conversation to `gemini-3.8-flash` and
   returns one summary per language; the key stays on the server. The route is bounded (400 lines,
