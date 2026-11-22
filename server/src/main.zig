@@ -132,7 +132,9 @@ fn recap(app: *App, req: *anole.Request, res: *anole.Response) !void {
 pub fn routes(app: *anole.Server(App), cfg: Config, limiter: anole.ratelimit.Limiter) !void {
     app.use(anole.middleware.RequestId.init(.{}));
     app.use(anole.observe.AccessLog.init(.{ .exclude = &anole.observe.probe_paths }));
-    if (cfg.cors_origin) |origin| app.use(anole.middleware.Cors.init(.{ .origins = &.{origin} }));
+    // `.origin`, not `.origins = &.{origin}`: that array would live on this function's stack,
+    // and Cors keeps the slice after `routes` returns.
+    if (cfg.cors_origin) |origin| app.use(anole.middleware.Cors.init(.{ .origin = origin }));
     _ = app.health(.{}); // /healthz and /readyz
 
     // /token and /recap are limited: each call costs Gemini usage. Static files are not.
