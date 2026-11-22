@@ -113,6 +113,26 @@ export function languageName(code: string): string {
   return LANGUAGES.find((l) => l.code === code)?.name ?? code;
 }
 
+/** A label starts with a capital in cased scripts, unless the name has its own ("isiZulu"). */
+const capitalised = (name: string, code: string) =>
+  /^[\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}\p{Script=Armenian}]/u.test(name) && !/\p{Lu}/u.test(name.slice(1))
+    ? name.charAt(0).toLocaleUpperCase(code) + name.slice(1)
+    : name;
+
+/**
+ * A language's name in itself ("Español", "日本語"), for a reader who may not read English: from
+ * the platform's CLDR data (`Intl.DisplayNames`), else the English name. Capitalised as a label.
+ */
+export function nativeName(code: string): string {
+  try {
+    const own = new Intl.DisplayNames([code], { type: 'language' }).of(code);
+    if (own && own.toLowerCase() !== code.toLowerCase()) return capitalised(own, code);
+  } catch {
+    // An engine without DisplayNames, or a code it does not know.
+  }
+  return languageName(code);
+}
+
 const primary = (code: string) => code.toLowerCase().split(/[-_]/)[0];
 
 /**
