@@ -467,6 +467,35 @@ describe('echo guard', () => {
     expect(s.awaitingResponse).toEqual([]);
   });
 
+  test('an echo that arrives after its translation finished playing is still dropped', () => {
+    const [s] = run(
+      [
+        ...speaking,
+        { type: 'turnComplete' },
+        { type: 'playbackFinished', utteranceId: 'u1' },
+        ...said('bonjour a tous comment allez vous', 'fr'),
+      ],
+      freshHandsFree(),
+    );
+    expect(s.utterances[0].status).toBe('done');
+    expect(s.utterances[1]).toMatchObject({ status: 'failed', error: 'echo' });
+  });
+
+  test('only the latest finished translations count as echo sources', () => {
+    const turn = (n: number, text: string): SessionEvent[] => [
+      ...said(`line ${n} here`, 'en'),
+      { type: 'outputTranscript', text },
+      { type: 'outputAudio', pcm },
+      { type: 'turnComplete' },
+      { type: 'playbackFinished', utteranceId: `u${n}` },
+    ];
+    const [s] = run(
+      [...open, ...turn(1, 'Bonjour à tous'), ...turn(2, 'Il fait beau'), ...turn(3, 'Merci bien'), ...said('bonjour a tous', 'fr')],
+      freshHandsFree(),
+    );
+    expect(s.utterances[3].status).toBe('translating');
+  });
+
   test('real speech during playback is kept', () => {
     const [s] = run([...speaking, ...said('Très bien, et toi ?', 'fr')], freshHandsFree());
     expect(s.utterances[1].status).toBe('translating');

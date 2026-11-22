@@ -199,6 +199,9 @@ function words(text: string): string[] {
     .filter(Boolean);
 }
 
+/** How many finished translations, newest first, the echo guard still compares against. */
+const ECHO_RECENT = 2;
+
 /** True when most of the captured words appear in what Vorp is speaking. */
 export function isEcho(captured: string, spoken: string, threshold: number): boolean {
   const heard = words(captured);
@@ -371,8 +374,11 @@ function step(s: Session, e: SessionEvent): Transition {
       next = patch(next, id, (u) => ({ source: u.source + e.text, ...routeByInput(u, s.participants, e.language) }));
       const u = find(next, id)!;
       if (u.routedBy === 'language' && (u.status === 'capturing' || u.status === 'translating')) {
-        const spoken = next.utterances
-          .filter((o) => o.id !== u.id && (o.status === 'queued' || o.status === 'speaking'))
+        const others = next.utterances.filter((o) => o.id !== u.id);
+        // Held microphone audio reaches the server after the reply, so the echo of a short
+        // translation can arrive once it has finished playing: check the latest ones too.
+        const recent = others.filter((o) => o.status === 'done').slice(-ECHO_RECENT);
+        const spoken = [...others.filter((o) => o.status === 'queued' || o.status === 'speaking'), ...recent]
           .map((o) => o.translation)
           .join(' ');
         if (isEcho(u.source, spoken, s.settings.echoMatch)) {

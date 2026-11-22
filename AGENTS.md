@@ -398,7 +398,8 @@ real `gemini-3.8-live` sessions with `bun run e2e:live`.
   ducking or barge-in can be added as rows (`OVERLAP_POLICIES` in `src/config/policies.ts`,
   handed to the reducer in `SessionSettings`; `core` never imports config).
 - **Echo**: platform echo cancellation, plus a guard that drops a captured utterance whose
-  transcript matches what Vorp is speaking (60% of its words, `ECHO_MATCH`). The dropped
+  transcript matches what Vorp is speaking or has just spoken (its last two finished
+  translations, since held audio arrives late; 60% of its words, `ECHO_MATCH`). The dropped
   utterance stays in the response order so the model's reply to it is dropped too. Held-button
   speech is never treated as echo. `pauseMicWhileSpeaking` exists as an emergency flag, off by
   default.
