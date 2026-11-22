@@ -191,6 +191,21 @@ session designs the screens.
       (owner: test later)
 - [ ] Booth check on two real phones over the venue network
 
+Pair mode is the main demo, so its UX gets the most care (owner, 22 November):
+
+- [ ] Turn-taking queue: a translation arriving while this phone's owner speaks waits, shown as
+      greyed text, and plays when they stop (mic and speaker take turns)
+- [ ] Live "they're talking": the other person's words appear as they speak, then "Translating"
+- [ ] Speaker sees delivery: "Playing on their phone" while it plays over there, then a tick
+- [ ] Light guest page: no voiceprint model, effects load after first paint, about 1 s to paint
+- [ ] Phone-to-phone echo guard: ignore speech not in the owner's language, filter Vorp's voice
+- [ ] Keep screens awake (Wake Lock); reconnect if a phone locks anyway
+- [ ] iPhone Safari: the Join tap also unlocks audio playback
+- [ ] Booth loop: after a session the host gets a fresh QR automatically (countdown, "Not now")
+- [ ] Join cues: a short sound and haptic on both phones at join and at go-live
+- [ ] Guest ends on the landing page; LANDING_URL is one config value (GitHub Pages or
+      Cloudflare Pages, undecided)
+
 ## Booth (Sat 28)
 
 - [ ] QR code to the live URL; a printed one-line instruction
