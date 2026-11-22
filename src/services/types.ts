@@ -2,6 +2,7 @@
 // src/services knows which implementation runs.
 
 import type { People, Pcm, SessionErrorKind, SessionSettings, UtteranceId } from '@/core/session';
+import type { Embedding } from '@/core/voiceprint';
 
 export type Unsubscribe = () => void;
 
@@ -82,10 +83,25 @@ export interface Recap {
   summarise(languages: readonly string[], lines: readonly string[]): Promise<Record<string, string>>;
 }
 
+/**
+ * Speaker embeddings on the device: 16 kHz mono PCM in, a voiceprint-model embedding out. Audio
+ * never leaves the device and is not kept. Web runs the model in a worker (WASM); native reports
+ * itself unavailable, so language routing applies there.
+ */
+export interface VoiceEmbedder {
+  /** Whether this platform can run the model at all. */
+  readonly available: boolean;
+  /** Fetch and start the model ahead of the first `embed`. Idempotent; rejects if it cannot load. */
+  load(): Promise<void>;
+  /** Embeds in the order called. Rejects when unavailable or the model fails. */
+  embed(pcm: Pcm): Promise<Embedding>;
+}
+
 /** String values by key, on the device only. */
 export interface KeyValueStorage {
   get(key: string): Promise<string | null>;
   set(key: string, value: string): Promise<void>;
+  remove(key: string): Promise<void>;
 }
 
 export type Services = {
@@ -93,4 +109,5 @@ export type Services = {
   output: AudioOutput;
   translator: Translator;
   recap: Recap;
+  voice: VoiceEmbedder;
 };

@@ -69,6 +69,12 @@ Verified live on 21 November unless noted. Findings are under "Hands-free turns"
 - [x] Bare screen shows the mode (hands-free or held button) and the queue as plain text
 - [x] **Milestone: hands-free two-way conversation on web, listening while speaking**
 - [ ] Try it by hand on a real device with a loudspeaker: echo, real voices, a noisy room
+- [x] On-device voiceprint (WeSpeaker ResNet34-LM in a Web Worker, served same origin):
+      enrolment state machine and storage, voice routing, Vorp's-own-voice echo filter (unit
+      tests; model checked in Node and headless Chrome, `bun run smoke:voiceprint`)
+- [ ] Enrolment screen (owner's design) on `features/enrolment`; remove the "Them" hold button
+- [ ] Tune `VOICE_THRESHOLDS` by hand with real voices, on iPhone Safari and desktop Chrome;
+      check Safari loads the worker and WASM
 - [x] The model sometimes speaks a placeholder such as "<no speech detected>" for noise; make
       it stay silent or drop those replies
 - [ ] A long session: `goAway`, reconnect and resumption

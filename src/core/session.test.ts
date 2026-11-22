@@ -11,6 +11,7 @@ import {
   targetLanguage,
   theirLanguage,
   transition,
+  validPeople,
   wasHeard,
   type Effect,
   type People,
@@ -190,7 +191,7 @@ describe('push-to-talk (manual detection)', () => {
     ]);
     expect(types(log[1])).toEqual([]); // manual: the microphone waits for a button
     expect(types(log[2])).toEqual(['beginTurn', 'startCapture']);
-    expect(types(log[4])).toEqual(['stopCapture', 'endTurn']);
+    expect(types(log[4])).toEqual(['stopCapture', 'endTurn', 'recogniseVoice']);
     expect(log[7]).toEqual([{ type: 'enqueuePlayback', utteranceId: 'u1', pcm }]);
     expect(log[10]).toEqual([{ type: 'finishPlayback', utteranceId: 'u1' }]);
     expect(s.utterances).toEqual([
@@ -201,8 +202,8 @@ describe('push-to-talk (manual detection)', () => {
 
   test('the lifecycle passes through every stage in order', () => {
     const steps: SessionEvent[] = [
-      { type: 'pressTalk', speaker: 'other' },
-      { type: 'releaseTalk', speaker: 'other' },
+      { type: 'pressTalk', speaker: 'owner' },
+      { type: 'releaseTalk', speaker: 'owner' },
       { type: 'outputAudio', pcm },
       { type: 'playbackStarted', utteranceId: 'u1' },
       { type: 'turnComplete' },
@@ -255,7 +256,7 @@ describe('push-to-talk (manual detection)', () => {
       { type: 'pressTalk', speaker: 'owner' },
       { type: 'inputTranscript', text: 'Good morning' },
       { type: 'releaseTalk', speaker: 'owner' },
-      { type: 'pressTalk', speaker: 'other' },
+      { type: 'pressTalk', speaker: 'owner' },
       { type: 'inputTranscript', text: 'Bonjour' },
       { type: 'outputTranscript', text: 'Bonjour' },
     ]);
@@ -276,7 +277,10 @@ describe('hands-free (automatic detection)', () => {
   test('detected speech opens an utterance and the detected language picks the speaker', () => {
     const [s, log] = run([...open, ...said('Bonjour à tous', 'fr-FR')], freshHandsFree());
     // No turn signals: the server ends the turn. The model then replies and does not listen, so audio is held.
-    expect(log.slice(2).flat()).toEqual([{ type: 'holdAudio', maxSeconds: 20 }]);
+    expect(log.slice(2).flat()).toEqual([
+      { type: 'holdAudio', maxSeconds: 20 },
+      { type: 'recogniseVoice', utteranceId: 'u1' },
+    ]);
     expect(s.utterances[0]).toMatchObject({ speaker: 'other', routedBy: 'language', language: 'fr-FR', status: 'translating' });
     expect(targetLanguage(s, s.utterances[0])).toBe('en');
   });
@@ -417,7 +421,7 @@ describe('hands-free (automatic detection)', () => {
 describe('audio hold while the model replies', () => {
   test('held from the end of a turn until its reply completes, then released', () => {
     const [s, log] = run([...open, ...said('Hello', 'en'), { type: 'outputAudio', pcm }, { type: 'turnComplete' }], freshHandsFree());
-    expect(types(log.flat())).toEqual(['openAudio', 'connect', 'startCapture', 'holdAudio', 'enqueuePlayback', 'finishPlayback', 'releaseAudio']);
+    expect(types(log.flat())).toEqual(['openAudio', 'connect', 'startCapture', 'holdAudio', 'recogniseVoice', 'enqueuePlayback', 'finishPlayback', 'releaseAudio']);
     expect(replying(s)).toBe(false);
     expect(micOpen(s)).toBe(true); // the microphone never closed
   });
@@ -437,18 +441,18 @@ describe('push-to-talk overrides detection', () => {
     const [s, log] = run(
       [
         ...open,
-        { type: 'pressTalk', speaker: 'other' },
+        { type: 'pressTalk', speaker: 'owner' },
         { type: 'speechStarted' },
-        { type: 'inputTranscript', text: 'OK', language: 'en' },
+        { type: 'inputTranscript', text: 'OK', language: 'fr' },
         { type: 'speechEnded' },
-        { type: 'releaseTalk', speaker: 'other' },
+        { type: 'releaseTalk', speaker: 'owner' },
       ],
       freshHandsFree(),
     );
     expect(s.utterances).toHaveLength(1);
-    expect(s.utterances[0]).toMatchObject({ speaker: 'other', routedBy: 'button', status: 'translating' });
+    expect(s.utterances[0]).toMatchObject({ speaker: 'owner', routedBy: 'button', status: 'translating' });
     expect(types(log[2])).toEqual(['beginTurn']); // the microphone is already open
-    expect(types(log[6])).toEqual(['endTurn', 'holdAudio']);
+    expect(types(log[6])).toEqual(['endTurn', 'holdAudio', 'recogniseVoice']);
     expect(s.held).toBeUndefined();
   });
 
@@ -544,7 +548,7 @@ describe('echo guard', () => {
 
   test('a held button is never treated as echo', () => {
     const [s] = run(
-      [...speaking, { type: 'pressTalk', speaker: 'other' }, { type: 'inputTranscript', text: 'bonjour à tous comment allez-vous' }],
+      [...speaking, { type: 'pressTalk', speaker: 'owner' }, { type: 'inputTranscript', text: 'bonjour à tous comment allez-vous' }],
       freshHandsFree(),
     );
     expect(s.utterances[1].status).toBe('capturing');
@@ -579,7 +583,7 @@ describe('pauseMicWhileSpeaking', () => {
 
   test('a held button still listens while Vorp speaks', () => {
     const [s] = run(
-      [...open, ...said('Hello', 'en'), { type: 'outputAudio', pcm }, { type: 'playbackStarted', utteranceId: 'u1' }, { type: 'pressTalk', speaker: 'other' }],
+      [...open, ...said('Hello', 'en'), { type: 'outputAudio', pcm }, { type: 'playbackStarted', utteranceId: 'u1' }, { type: 'pressTalk', speaker: 'owner' }],
       paused(),
     );
     expect(micOpen(s)).toBe(true);
@@ -658,13 +662,11 @@ describe('one owner, any other language', () => {
     expect(log.flat().find((e) => e.type === 'archive')).toMatchObject({ languages: { owner: 'en', other: 'hi' } });
   });
 
-  test("a held talk button names the speaker; the other person's language still follows their reports", () => {
-    const [s] = run(
-      [...open, { type: 'pressTalk', speaker: 'other' }, { type: 'inputTranscript', text: 'Hola' }, { type: 'releaseTalk', speaker: 'other' }, { type: 'sourceLanguage', language: 'es' }],
-      freshHandsFree(),
-    );
-    expect(s.utterances[0]).toMatchObject({ speaker: 'other', routedBy: 'button', language: 'es' });
-    expect(s.otherLanguage).toBe('es');
+  test('hold-to-talk is the owner only: a press for the other person is ignored', () => {
+    const [s, log] = run([...open, { type: 'pressTalk', speaker: 'other' }, { type: 'inputTranscript', text: 'Hola' }], freshHandsFree());
+    expect(s.held).toBeUndefined();
+    expect(log[2]).toEqual([]);
+    expect(s.utterances[0]).toMatchObject({ routedBy: 'language' });
   });
 
   test('a voice verdict names the speaker over the language, never over a held button', () => {
@@ -724,4 +726,84 @@ test('a note lands on the utterance being answered', () => {
     freshHandsFree(),
   );
   expect(s.utterances[0].note).toBe('Idiom: very easy');
+});
+
+describe('the setup', () => {
+  test('the owner and the other person cannot share a language: the previous setup stays', () => {
+    const both: People = { ...people, other: { ...people.other, language: 'en-GB' } };
+    expect(validPeople(both)).toBe(false);
+    expect(validPeople(people)).toBe(true);
+    const [s, effects] = transition(freshHandsFree(), { type: 'configure', people: both, settings: manual });
+    expect(s.people).toEqual(people);
+    expect(s.settings).toEqual(handsFree);
+    expect(effects).toEqual([]);
+  });
+
+  test('after a conversation stops, "them" goes back to the picked language', () => {
+    const [s] = run([...open, { type: 'speechStarted' }, { type: 'inputTranscript', text: 'Hola' }, { type: 'speechEnded' }, { type: 'sourceLanguage', language: 'es' }], freshHandsFree());
+    expect(theirLanguage(s)).toBe('es');
+    const [stopped] = run([{ type: 'stop' }], s);
+    expect(stopped.otherLanguage).toBeUndefined();
+    expect(theirLanguage(stopped)).toBe('fr');
+    const [failed] = run([{ type: 'audioFailed', kind: 'mic', message: 'gone' }], s);
+    expect(theirLanguage(failed)).toBe('fr');
+  });
+});
+
+describe('voice recognition', () => {
+  const hola: SessionEvent[] = [{ type: 'speechStarted' }, { type: 'inputTranscript', text: 'Hola amigo' }, { type: 'speechEnded' }];
+
+  test('the end of each capture asks for its voice to be judged', () => {
+    const [, log] = run([...open, ...hola], freshHandsFree());
+    expect(log[4]).toContainEqual({ type: 'recogniseVoice', utteranceId: 'u1' });
+    expect(log.flat().filter((e) => e.type === 'recogniseVoice')).toHaveLength(1);
+  });
+
+  test('nothing is judged for speech that was dropped or cut off by a stop', () => {
+    const [, stopped] = run([...open, { type: 'speechStarted' }, { type: 'stop' }], freshHandsFree());
+    expect(stopped.flat().some((e) => e.type === 'recogniseVoice')).toBe(false);
+  });
+
+  test('a late verdict lands on the utterance it was computed for, not the one being captured', () => {
+    const [s] = run(
+      [...open, ...hola, { type: 'speechStarted' }, { type: 'speakerRecognised', speaker: 'other', utteranceId: 'u1' }],
+      freshHandsFree(),
+    );
+    expect(s.utterances.map((u) => [u.id, u.speaker, u.routedBy])).toEqual([
+      ['u1', 'other', 'voice'],
+      ['u2', undefined, 'language'],
+    ]);
+  });
+
+  test("the other person speaking the owner's language is still the other person, and their language stays", () => {
+    const [s] = run(
+      [...open, ...hola, { type: 'speakerRecognised', speaker: 'other', utteranceId: 'u1' }, { type: 'sourceLanguage', language: 'en' }],
+      freshHandsFree(),
+    );
+    expect(s.utterances[0]).toMatchObject({ speaker: 'other', routedBy: 'voice', language: 'en' });
+    expect(theirLanguage(s)).toBe('fr');
+  });
+
+  test("Vorp's own voice is dropped as an echo, and so is the model's reply to it", () => {
+    const [s, log] = run(
+      [...open, ...hola, { type: 'echoRecognised', utteranceId: 'u1' }, { type: 'outputTranscript', text: 'Hello friend' }, { type: 'outputAudio', pcm }],
+      freshHandsFree(),
+    );
+    expect(s.utterances[0]).toMatchObject({ status: 'failed', error: 'echo', translation: '' });
+    expect(s.awaitingResponse).toEqual(['u1']);
+    expect(log[log.length - 1]).toEqual([]);
+    expect(wasHeard(s.utterances[0])).toBe(false);
+  });
+
+  test('an echo verdict is too late once the reply plays, and never applies to a held button', () => {
+    const [playing] = run([...open, ...hola, { type: 'outputAudio', pcm }, { type: 'echoRecognised', utteranceId: 'u1' }], freshHandsFree());
+    expect(playing.utterances[0].status).toBe('queued');
+    const [held] = run([...open, { type: 'pressTalk', speaker: 'owner' }, { type: 'echoRecognised', utteranceId: 'u1' }], freshHandsFree());
+    expect(held.utterances[0].status).toBe('capturing');
+  });
+
+  test('a verdict for an unknown utterance changes nothing', () => {
+    const [s] = run([...open, ...hola], freshHandsFree());
+    expect(run([{ type: 'speakerRecognised', speaker: 'owner', utteranceId: 'u9' }, { type: 'echoRecognised', utteranceId: 'u9' }], s)[0]).toEqual(s);
+  });
 });

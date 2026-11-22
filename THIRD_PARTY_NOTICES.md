@@ -27,3 +27,35 @@ copies and are not listed here; their licences ship with the packages.
 - **Copied into:** `src/ui/tokens/glass.ts` (the tier values) and `src/ui/primitives/Glass.tsx`.
 - **Changes:** the neutral milk fill takes a tint; shadows are scaled down on the light theme;
   the 3.5% top gradient is left out.
+
+## WeSpeaker ResNet34-LM voiceprint model (weights, CC-BY-4.0)
+
+Data, not code: the one licence exception, approved by the owner on 21 November 2026 (see
+`AGENTS.md`, Working rules).
+
+- **Model:** WeSpeaker ResNet34-LM speaker embedding model, trained on VoxCeleb.
+- **Authors:** the WeSpeaker project ([wenet-e2e/wespeaker](https://github.com/wenet-e2e/wespeaker);
+  Hongji Wang et al., "WeSpeaker: A research and production oriented speaker embedding learning
+  toolkit", ICASSP 2023), packaged by pyannote
+  ([pyannote/wespeaker-voxceleb-resnet34-LM](https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM))
+  and exported to ONNX by onnx-community
+  ([onnx-community/wespeaker-voxceleb-resnet34-LM](https://huggingface.co/onnx-community/wespeaker-voxceleb-resnet34-LM),
+  commit `6a61a1833ff2583aabeba044f5c8221f00b67ceb`).
+- **Licence:** Creative Commons Attribution 4.0 International,
+  <https://creativecommons.org/licenses/by/4.0/>.
+- **Copied into:** `public/models/onnx-community/wespeaker-voxceleb-resnet34-LM/`
+  (`config.json`, `preprocessor_config.json`, `README.md`, `onnx/model_quantized.onnx`), served
+  with the web build.
+- **Changes:** none to the weights; only the 8-bit quantised file is kept. Its `README.md` gains
+  this attribution.
+
+## Voiceprint runtime in the web build
+
+Not committed: `scripts/voiceprint/assets.ts` copies these from installed packages into
+`public/voiceprint/`, so the web build redistributes them with their licences beside them.
+
+- **transformers.js** (`@huggingface/transformers`, `dist/transformers.min.js`): Apache-2.0,
+  Copyright Hugging Face. Licence copied as `transformers.LICENSE.txt`.
+- **ONNX Runtime Web** (`onnxruntime-web`, `dist/ort-wasm-simd-threaded.{mjs,wasm}`): MIT,
+  Copyright (c) Microsoft Corporation. The package ships no licence file, so a notice is written
+  as `onnxruntime-web.LICENSE.txt`.

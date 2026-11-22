@@ -9,5 +9,6 @@ export function createStorage(): KeyValueStorage {
   return {
     get: (key) => AsyncStorage.getItem(key),
     set: (key, value) => AsyncStorage.setItem(key, value),
+    remove: (key) => AsyncStorage.removeItem(key),
   };
 }

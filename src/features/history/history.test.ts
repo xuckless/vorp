@@ -18,7 +18,7 @@ test('a damaged entry is dropped and the rest of the history is kept', async () 
   const good = toConversation('c1', 1, people, [said('Hello', 'Bonjour')]);
   const { recap: _, ...noRecap } = toConversation('c2', 2, people, [said('Hi', 'Salut')]);
   const kept = new Map([['vorp.history.v1', JSON.stringify([noRecap, null, good])]]);
-  const storage = { get: async (k: string) => kept.get(k) ?? null, set: async (k: string, v: string) => void kept.set(k, v) };
+  const storage = { get: async (k: string) => kept.get(k) ?? null, set: async (k: string, v: string) => void kept.set(k, v), remove: async (k: string) => void kept.delete(k) };
   const history = await loadHistory(storage);
   expect(history.store.get().map((c) => c.id)).toEqual(['c1']);
 });
@@ -38,7 +38,7 @@ test('history is newest first and bounded', () => {
 
 test('history survives a reload, and an unfinished recap is marked failed', async () => {
   const kept = new Map<string, string>();
-  const storage = { get: async (k: string) => kept.get(k) ?? null, set: async (k: string, v: string) => void kept.set(k, v) };
+  const storage = { get: async (k: string) => kept.get(k) ?? null, set: async (k: string, v: string) => void kept.set(k, v), remove: async (k: string) => void kept.delete(k) };
   const first = await loadHistory(storage);
   first.add(toConversation('c1', 1, people, [said('Hello', 'Bonjour')]));
   first.setRecap('c1', { status: 'writing' });
@@ -68,7 +68,7 @@ test('a conversation saved before the owner model is read with the first seat as
     recap: { status: 'none' },
   };
   const kept = new Map([['vorp.history.v1', JSON.stringify([old])]]);
-  const storage = { get: async (k: string) => kept.get(k) ?? null, set: async (k: string, v: string) => void kept.set(k, v) };
+  const storage = { get: async (k: string) => kept.get(k) ?? null, set: async (k: string, v: string) => void kept.set(k, v), remove: async (k: string) => void kept.delete(k) };
   const [c] = (await loadHistory(storage)).store.get();
   expect(c.languages).toEqual({ owner: 'en', other: 'fr' });
   expect(c.lines).toEqual([

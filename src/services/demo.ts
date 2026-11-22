@@ -9,6 +9,7 @@ import { LIVE_AUDIO } from '@/config/models';
 import type { Pcm } from '@/core/session';
 
 import { createAudioOutput } from './audio-output';
+import { NO_VOICE } from './no-voice';
 import type { Services, TranslatorEvent } from './types';
 
 const WAV_HEADER_BYTES = 44;
@@ -110,5 +111,7 @@ export function createDemoServices(
       },
     },
     recap: { summarise: async () => DEMO_RECAP },
+    // The script names its speakers by language; the demo does not load the voiceprint model.
+    voice: NO_VOICE,
   };
 }

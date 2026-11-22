@@ -44,6 +44,8 @@ bun test                     # unit tests
 bun run token-server         # the Anole token server on :8787 (needs Zig 0.17; reads .env)
 bun run test:server          # the token server's routes, in memory
 bun run e2e:live             # by hand: recorded speech through the web build against real Gemini
+bun run smoke:voiceprint     # by hand: the voiceprint model on recorded voices, cosine scores
+bun run voiceprint:assets    # voiceprint runtime into public/voiceprint/ (web and export:web run it)
 bun run export:web           # static web build into dist/
 bunx expo install <package>  # add a dependency at the version this Expo SDK expects
 bunx expo-doctor             # check dependency and config health
@@ -92,7 +94,7 @@ the other folders.
 
 ### Services implement shared interfaces
 
-- `AudioInput`, `AudioOutput` and `Translator` are each one interface in `src/services`.
+- `AudioInput`, `AudioOutput`, `Translator` and `VoiceEmbedder` are each one interface in `src/services`.
   Platform code (web, native) and provider code (Gemini) implement the interface; nothing outside
   `src/services` knows which implementation is running.
 - Platform splits use Expo's `.web.ts` / `.native.ts` file resolution on the implementation only.
@@ -173,6 +175,10 @@ vendor path directly. How they run on native is recorded under Decisions.
 - **Copy first.** Look for a package or a proven implementation and port it before writing new
   code. Vorp is Apache-2.0, so copied code must be MIT, BSD, Apache-2.0 or MPL-2.0; no GPL or
   AGPL code. Each copy carries a source comment and an entry in `THIRD_PARTY_NOTICES.md`.
+  **One exception, approved by the owner (21 November 2026):** the voiceprint model's weights
+  (WeSpeaker ResNet34-LM, `onnx-community/wespeaker-voxceleb-resnet34-LM`) are CC-BY-4.0. They
+  are data, not code, and ship with attribution in `THIRD_PARTY_NOTICES.md`. Any other non-code
+  licence needs the owner's approval too.
 - **No performance-dependent tests.** Nothing in `bun test` or CI asserts timings, fps, latency
   or throughput. Performance is measured by hand on the owner's devices.
 - **Sprint mode.** Breadth first to spec, each item reviewed for correctness and simplicity.
@@ -303,13 +309,12 @@ real `gemini-3.8-live` sessions with `bun run e2e:live`.
   `BidiGenerateContentTranscription`, for input and output transcripts, and
   `inputAudioTranscription.languageCodes` as hints (Vorp sends the owner's and the picked
   language). The guide pages never mention it, so whether `gemini-3.8-live` fills it is
-  unverified. **Routing** (owner, 21 November 2026): a held button, else a voice verdict
-  (`speakerRecognised`, `routedBy: 'voice'`; the seam for speaker recognition, which nothing sends
-  yet), else the language: the owner's language is the owner, any other is the other person. The
+  unverified. **Routing** (owner, 21 November 2026): the owner's held button, else a voice verdict
+  (`speakerRecognised`, `routedBy: 'voice'`, see "Voiceprint" below), else the language: the owner's language is the owner, any other is the other person. The
   language comes from `report_language`, else the input `languageCode`; with neither, a reply in
   the owner's language means the other person spoke. Language reports on the other person's
-  utterances (not in the owner's language) set `otherLanguage`, which the UI shows and which a
-  new conversation or setup clears.
+  utterances (not in the owner's language) set `otherLanguage`, which the UI shows and which the
+  conversation ending (stopped or failed), a new conversation or a new setup clears.
 - **Auto-detect is a prompt rule.** The Live API takes the system instruction only at setup, so
   the prompt tells the model: the owner's speech goes into the language the other person spoke
   most recently, the picked one until they have spoken; with auto-detect off, always the picked
@@ -422,19 +427,33 @@ real `gemini-3.8-live` sessions with `bun run e2e:live`.
 - **Auto-detect their language** is a setting, on by default (`autoDetect` in
   `SessionSettings`). On: the owner's speech goes into the language the other person last spoke,
   the picked one until they speak. Off: always the picked one.
-- **Hands-free with a fallback.** Voice activity detection ends the turn; the detected language
-  identifies the speaker and the direction. A hold-to-talk button stays available for noisy rooms;
-  the current stage shows one for each role. Speaker recognition (a voiceprint) is phase 2.
+- **Hands-free with a fallback.** Voice activity detection ends the turn; the owner's voiceprint,
+  else the detected language, identifies the speaker and the direction. A hold-to-talk button
+  stays available for noisy rooms, **for the owner only** (owner, 21 November 2026): the reducer
+  ignores `pressTalk` for `other`, and `held` can only be `'owner'`. The current stage still
+  draws a "Them" button, which now does nothing; the owner's redesign removes it.
+- **You and them never share a language** (owner, 21 November 2026). `configure` refuses a setup
+  where `sameLanguage(owner, other)` (primary subtag, so `pt-BR` and `pt-PT` count as one) and
+  keeps the previous one; `validPeople` is the rule, `pickableLanguages(people, role)` and
+  `withLanguage` in `features/conversation/people.ts` are what pickers call, and a saved
+  snapshot with both the same is repaired on read.
+- **After a conversation stops, "them" goes back to the picked language**: the detected
+  language is forgotten (`otherLanguage` cleared on stop or failure; `theirLanguage` and
+  `shownLanguage` then return the pick). The archive still records what they spoke. Auto-detect
+  keeps the picked language as a transcription hint, and the other person speaking the owner's
+  language does not change their language.
 - **Overlap policy: keep talking, queue the next.** Vorp finishes the current translation while
   capturing new speech, then speaks the next one in order. The policy is a value in a table, so
   ducking or barge-in can be added as rows (`OVERLAP_POLICIES` in `src/config/policies.ts`,
   handed to the reducer in `SessionSettings`; `core` never imports config).
-- **Echo**: platform echo cancellation, plus a guard that drops a captured utterance whose
-  transcript matches what Vorp is speaking or has just spoken (its last two finished
-  translations, since held audio arrives late; 60% of its words, `ECHO_MATCH`). The dropped
-  utterance stays in the response order so the model's reply to it is dropped too. Held-button
-  speech is never treated as echo. `pauseMicWhileSpeaking` exists as an emergency flag, off by
-  default.
+- **Echo**: platform echo cancellation, plus two guards that drop a captured utterance as an
+  echo. The transcript guard drops one whose transcript matches what Vorp is speaking or has just
+  spoken (its last two finished translations, since held audio arrives late; 60% of its words,
+  `ECHO_MATCH`). The voice guard drops one whose voice matches Vorp's own (see "Voiceprint"). The
+  dropped utterance stays in the response order so the model's reply to it is dropped too.
+  Held-button speech is never treated as echo. The owner chose "keep listening, filter": the
+  microphone stays open while Vorp speaks; `pauseMicWhileSpeaking` exists as an emergency flag,
+  off by default.
 - **The microphone is derived state**: `micOpen(session)` decides whether audio flows, and
   `transition` emits `startCapture` / `stopCapture` when it changes.
 - **One interpreter voice first.** The build-out uses a single Gemini voice and one Live session
@@ -446,6 +465,63 @@ real `gemini-3.8-live` sessions with `bun run e2e:live`.
   Languages and voices are edited inline.
 - **Languages**: everything the Live model supports, from one generated table, with English and
   French pinned first.
+
+### Voiceprint (phase 2, 21 November 2026)
+
+Owner decisions: speaker recognition with a voiceprint, on the device; the model ships with the
+app; a voice echo filter instead of muting the microphone.
+
+- **Model**: WeSpeaker ResNet34-LM (VoxCeleb), the onnx-community ONNX export, 8-bit
+  (`onnx/model_quantized.onnx`, 6.7 MB, commit `6a61a18`), run with transformers.js
+  (`@huggingface/transformers`, Apache-2.0) on ONNX Runtime Web's CPU WASM backend (MIT):
+  `WeSpeakerFeatureExtractor` (80-dim Kaldi fbank at 16 kHz) in, a 256-dim embedding
+  (`last_hidden_state`) out. Table in `src/config/voiceprint.ts`. CC-BY-4.0 weights, the
+  licence exception under Working rules.
+- **Shipped, same origin**: the model files are committed under `public/models/` (Expo copies
+  `public/` into `dist/`, which the token server serves). The runtime (transformers.js's
+  self-contained `transformers.min.js`, ONNX Runtime's plain `ort-wasm-simd-threaded.{mjs,wasm}`,
+  14 MB, and the worker) is copied from node_modules into `public/voiceprint/` by
+  `scripts/voiceprint/assets.ts`, gitignored, so versions always match the lockfile; the script
+  refuses an onnxruntime-web that is not the one transformers.js pins. Remote models are off and
+  the WASM paths are set before the first session: nothing is fetched from Hugging Face or a CDN
+  (checked in headless Chrome against `dist/`). The worker is not in the Metro bundle.
+- **In a Web Worker** (`services/voice-worker.ts`, built by the assets script; protocol in
+  `voice-protocol.ts`), one embedding at a time, single-threaded unless the page is
+  cross-origin isolated. `VoiceEmbedder` is the interface; `voice-embedder.web.ts` drives the
+  worker, `voice-embedder.native.ts` (and the demo) is `NO_VOICE`, unavailable, so language
+  routing applies. One embedder per page (`voiceEmbedder()`), shared by enrolment and
+  conversations.
+- **Enrolment**: the owner reads three sentences in their own language
+  (`ENROLMENT_SENTENCES` in `config/enrolment.ts`, a data table; English for languages without
+  a row). `features/enrolment/enrolment.ts` is the state machine
+  (`loading → notEnrolled | enrolled | unavailable`, then `recording` sentence 1..3 `→ computing →
+  enrolled | failed`); a reading with under 2 s of voice is asked for again. The three
+  embeddings are averaged (unit vectors, `average` in `core/voiceprint.ts`) and stored with
+  `KeyValueStorage` under `vorp.voiceprint.v1`: the embedding, model id, language and date, never
+  audio. Redo keeps the old print until a new one replaces it; delete removes it. A print from
+  another model is discarded on read. `createEnrolment` (`controller.ts`) is the runner,
+  created once at boot; the UI calls `begin(language)`, `next`, `cancel`, `remove` and reads
+  `useEnrolment`, `currentSentence`, `enrolmentProgress`, `needsEnrolment`, `level()`.
+- **Routing**: whenever an utterance stops capturing (not dropped), the reducer emits
+  `recogniseVoice`. The runner takes the microphone audio *sent to the translator* since the
+  previous one (so audio held during a reply counts when it is released), at most the last 8 s,
+  drops quiet frames (`voicedSamples`, an energy gate for the embedding only; turns stay the
+  server's) and, with at least 1.5 s of voice left, embeds it and judges it (`judgeVoice`):
+  `speakerRecognised { speaker, utteranceId }` when confident, nothing when unsure, not
+  enrolled or too short. The verdict names its utterance because it arrives after newer speech
+  may have started.
+- **Voice echo filter**: Vorp's own voice is learnt per conversation from the translations it
+  plays (24 kHz output resampled to 16 kHz; the first five long enough are averaged, reset when
+  the interpreter voice changes). An utterance closer to it than to the owner's print and above
+  the echo threshold is `echoRecognised`, dropped through the same path as a transcript echo,
+  while it is still capturing or translating (too late once its reply plays). It works without
+  enrolment. The transcript guard stays.
+- **Thresholds are provisional** (`VOICE_THRESHOLDS`: owner 0.4, other 0.25, echo 0.4; clip
+  minimum 1.5 s): set from `bun run smoke:voiceprint` on TTS voices and to be tuned by hand on
+  the owner's devices. No test asserts them or any timing. On the TTS clips, single 1–3 s clips
+  of one voice scored 0.08–0.49 against each other and different voices up to 0.38; two-clip
+  prints separated better (same voice 0.52, others at most 0.16; Vorp's voice 0.43–0.48 against
+  its print, other voices at most 0.30). Short utterances will often be unsure.
 
 ### Agent behaviours
 
@@ -480,6 +556,6 @@ tool declaration. Turning one off removes its row's contribution; no feature cod
 
 ### Data and licence
 
-- **Persistence**: settings and conversation history on the device only. No accounts, no cloud.
-  Audio is never stored.
+- **Persistence**: settings, conversation history and the owner's voiceprint (an embedding) on
+  the device only. No accounts, no cloud. Audio is never stored.
 - **Licence**: Apache-2.0, public repository.

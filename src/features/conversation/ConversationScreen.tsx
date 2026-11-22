@@ -110,7 +110,7 @@ function createController(mode: Mode, boot: Boot, onEnded: (id: string) => void)
       (text) => history.setRecap(conversation.id, { status: 'ready', text }),
       () => history.setRecap(conversation.id, { status: 'failed' }),
     );
-  });
+  }, mode === 'demo' ? undefined : boot.enrolment.ownerPrint);
   return { runtime, levels: createLevels(services), history };
 }
 

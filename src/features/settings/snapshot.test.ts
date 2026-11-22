@@ -62,3 +62,11 @@ test('unrecognised people fall back to the defaults', () => {
   }
   expect(restore(JSON.stringify({ participants: 'nope' }), offered, defaults).setup.people).toEqual(DEFAULT_PEOPLE);
 });
+
+test('a saved setup with one language on both sides gives the other person a different one', () => {
+  const same = (language: string) => JSON.stringify({ people: { owner: { language, voice: 'Kore' }, other: { language, voice: 'Kore' } } });
+  expect(restore(same('es'), offered, defaults).setup.people.other.language).toBe('fr');
+  const french = restore(same('fr'), offered, defaults).setup.people;
+  expect(french.owner.language).toBe('fr');
+  expect(french.other.language).toBe('en');
+});

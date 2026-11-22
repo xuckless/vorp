@@ -6,7 +6,7 @@ import { DEFAULT_PEOPLE } from '@/config/conversation';
 import { LANGUAGES } from '@/config/languages';
 import { DEFAULT_SETTINGS } from '@/config/policies';
 import { VOICES } from '@/config/voices';
-import type { People, Person, SessionSettings } from '@/core/session';
+import { sameLanguage, validPeople, type People, type Person, type SessionSettings } from '@/core/session';
 
 export type ThemeChoice = 'system' | 'light' | 'dark';
 export type MotionChoice = 'system' | 'reduce';
@@ -44,7 +44,14 @@ function people(saved: { people?: unknown; participants?: unknown }): People {
   const pair = saved.people as Partial<Record<keyof People, unknown>> | undefined;
   const seats = Array.isArray(saved.participants) ? saved.participants : [];
   const [owner, other] = typeof pair === 'object' && pair !== null ? [pair.owner, pair.other] : [seats[0], seats[1]];
-  return { owner: person(owner, DEFAULT_PEOPLE.owner), other: person(other, DEFAULT_PEOPLE.other) };
+  const restored = { owner: person(owner, DEFAULT_PEOPLE.owner), other: person(other, DEFAULT_PEOPLE.other) };
+  if (validPeople(restored)) return restored;
+  // Both in one language (an older build allowed it): the other person gets the default, or
+  // the first language the owner does not speak.
+  const language = [DEFAULT_PEOPLE.other.language, DEFAULT_PEOPLE.owner.language, ...LANGUAGES.map((l) => l.code)].find(
+    (code) => !sameLanguage(code, restored.owner.language),
+  )!;
+  return { ...restored, other: { ...restored.other, language } };
 }
 
 /** A stored snapshot may be from an older build: keep only what the tables still know. */

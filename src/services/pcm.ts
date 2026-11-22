@@ -60,3 +60,70 @@ export function base64ToPcm(text: string): Int16Array {
   for (let i = 0; i < n; i++) out[i] = view.getInt16(i * 2, true);
   return out;
 }
+
+/**
+ * Linear-interpolation resampling of 16-bit PCM, for example the interpreter's 24 kHz output to
+ * the 16 kHz the voiceprint model takes. Speech energy sits well below both Nyquist limits.
+ */
+export function resample(pcm: Int16Array, from: number, to: number): Int16Array {
+  if (from === to || pcm.length === 0) return pcm.slice();
+  const out = new Int16Array(Math.floor((pcm.length * to) / from));
+  const step = from / to;
+  for (let i = 0; i < out.length; i++) {
+    const at = i * step;
+    const j = Math.floor(at);
+    const next = j + 1 < pcm.length ? pcm[j + 1] : pcm[j];
+    out[i] = Math.round(pcm[j] + (next - pcm[j]) * (at - j));
+  }
+  return out;
+}
+
+export type VoicedOptions = {
+  /** Frame length in samples. */
+  frame: number;
+  /** A frame is kept if its RMS is at least this share of the loudest frame's... */
+  relative: number;
+  /** ...and at least this absolute RMS (0..1 of full scale). */
+  floor: number;
+};
+
+/**
+ * The frames that carry a voice, joined: quiet frames (pauses, the silence the server waits for
+ * before ending a turn) are left out so they do not dilute a speaker embedding. Not a turn
+ * detector; turns stay the server's.
+ */
+export function voicedSamples(pcm: Int16Array, { frame, relative, floor }: VoicedOptions): Int16Array {
+  const frames = Math.floor(pcm.length / frame);
+  const rms = new Float64Array(frames);
+  let loudest = 0;
+  for (let f = 0; f < frames; f++) {
+    let sum = 0;
+    for (let i = f * frame; i < (f + 1) * frame; i++) sum += pcm[i] * pcm[i];
+    rms[f] = Math.sqrt(sum / frame) / 0x8000;
+    loudest = Math.max(loudest, rms[f]);
+  }
+  const gate = Math.max(floor, loudest * relative);
+  const kept: number[] = [];
+  for (let f = 0; f < frames; f++) if (rms[f] >= gate && rms[f] > 0) kept.push(f);
+  const out = new Int16Array(kept.length * frame);
+  kept.forEach((f, k) => out.set(pcm.subarray(f * frame, (f + 1) * frame), k * frame));
+  return out;
+}
+
+/** 16-bit PCM as floats in -1..1, the form the voiceprint model's feature extractor takes. */
+export function pcmToFloat(pcm: Int16Array): Float32Array {
+  const out = new Float32Array(pcm.length);
+  for (let i = 0; i < pcm.length; i++) out[i] = pcm[i] / 0x8000;
+  return out;
+}
+
+/** Concatenate chunks into one buffer. */
+export function joinPcm(chunks: readonly Int16Array[]): Int16Array {
+  const out = new Int16Array(chunks.reduce((n, c) => n + c.length, 0));
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.length;
+  }
+  return out;
+}

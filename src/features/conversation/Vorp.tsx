@@ -4,20 +4,23 @@
 import { Suspense, use, useState } from 'react';
 import { View } from 'react-native';
 
+import { createEnrolment, type EnrolmentController } from '@/features/enrolment/controller';
 import { loadHistory, type History } from '@/features/history/history';
 import { loadSetup, type Setup } from '@/features/settings/saved';
-import { createStorage, type KeyValueStorage } from '@/services';
+import { createEnrolmentServices, createStorage, type KeyValueStorage } from '@/services';
 import { useTheme } from '@/ui/tokens';
 
 import { ConversationScreen } from './ConversationScreen';
 
 export type Mode = 'live' | 'demo';
-export type Boot = { storage: KeyValueStorage; history: History; setup: Setup };
+/** `enrolment` owns the owner's voiceprint; the UI drives it, the live runtime reads it. */
+export type Boot = { storage: KeyValueStorage; history: History; setup: Setup; enrolment: EnrolmentController };
 
 async function boot(): Promise<Boot> {
   const storage = createStorage();
+  const enrolment = createEnrolment(createEnrolmentServices(), storage);
   const [history, setup] = await Promise.all([loadHistory(storage), loadSetup(storage)]);
-  return { storage, history, setup };
+  return { storage, history, setup, enrolment };
 }
 
 /** Read once per page load. */

@@ -8,13 +8,18 @@ const MIC_GAIN = 5;
 
 export type Levels = { mic: () => number; out: () => number; dispose: () => void };
 
+/** A microphone chunk's level, 0..1. */
+export function micLevel(pcm: Int16Array): number {
+  let sum = 0;
+  for (let i = 0; i < pcm.length; i++) sum += pcm[i] * pcm[i];
+  // A soft ceiling: a loud voice approaches the top instead of pinning the ring at it.
+  return pcm.length === 0 ? 0 : Math.tanh((Math.sqrt(sum / pcm.length) / 0x8000) * MIC_GAIN);
+}
+
 export function createLevels({ input, output }: Services): Levels {
   let mic = 0;
   const off = input.onChunk((pcm) => {
-    let sum = 0;
-    for (let i = 0; i < pcm.length; i++) sum += pcm[i] * pcm[i];
-    // A soft ceiling: a loud voice approaches the top instead of pinning the ring at it.
-    mic = Math.tanh((Math.sqrt(sum / pcm.length) / 0x8000) * MIC_GAIN);
+    mic = micLevel(pcm);
   });
   return { mic: () => mic, out: () => output.level(), dispose: off };
 }

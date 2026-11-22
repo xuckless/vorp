@@ -16,8 +16,11 @@ import {
 } from '@/core/session';
 import { LIVE_AUDIO } from '@/config/models';
 import { createStore, type Store } from '@/core/store';
+import type { Embedding } from '@/core/voiceprint';
 import type { Services } from '@/services';
 import { ServiceError } from '@/services/types';
+
+import { createVoiceJudge } from './voice';
 
 export type Runtime = {
   store: Store<Session>;
@@ -38,17 +41,26 @@ export function createRuntime(
   settings: SessionSettings,
   /** Called with each conversation that ends with something heard in it, and the languages spoken in it. */
   onArchive: (languages: Record<Role, string>, utterances: Utterance[]) => void = () => {},
+  /** The owner's enrolled voiceprint, if any (see features/enrolment). Without one only the echo filter uses voices. */
+  ownerPrint: () => Embedding | undefined = () => undefined,
 ): Runtime {
   const { input, output, translator } = services;
   const store = createStore(initialSession(people, settings));
+  const voice = createVoiceJudge(services.voice, ownerPrint, (event) => dispatch(event));
   /** The live microphone-to-translator pipe while the reducer says the microphone is open. */
   let pipe: (() => void) | null = null;
 
   /** Microphone audio kept back while the model replies; null when audio goes straight out. */
   let held: { chunks: Pcm[]; max: number } | null = null;
 
+  /** Every chunk that reaches the translator is also what a voice verdict is computed from. */
+  function send(pcm: Pcm) {
+    translator.sendAudio(pcm);
+    voice.sent(pcm);
+  }
+
   function release() {
-    held?.chunks.splice(0).forEach((pcm) => translator.sendAudio(pcm));
+    held?.chunks.splice(0).forEach(send);
   }
 
   function dispatch(event: SessionEvent) {
@@ -60,6 +72,7 @@ export function createRuntime(
   function run(effect: Effect) {
     switch (effect.type) {
       case 'connect':
+        voice.connected(effect.people.owner.voice);
         translator.connect(effect.people, effect.settings).then(
           () => dispatch({ type: 'connected' }),
           (err: unknown) =>
@@ -82,7 +95,7 @@ export function createRuntime(
       case 'startCapture':
         pipe?.();
         pipe = input.onChunk((pcm) => {
-          if (held === null) return translator.sendAudio(pcm);
+          if (held === null) return send(pcm);
           held.chunks.push(pcm);
           if (held.chunks.length > held.max) release();
         });
@@ -99,6 +112,9 @@ export function createRuntime(
         release();
         held = null;
         return;
+      case 'recogniseVoice':
+        voice.recognise(effect.utteranceId);
+        return;
       case 'beginTurn':
         translator.beginTurn();
         return;
@@ -106,13 +122,16 @@ export function createRuntime(
         translator.endTurn();
         return;
       case 'enqueuePlayback':
+        voice.played(effect.utteranceId, effect.pcm);
         output.enqueue(effect.utteranceId, effect.pcm);
         return;
       case 'finishPlayback':
         output.finish(effect.utteranceId);
+        voice.finished(effect.utteranceId);
         return;
       case 'stopPlayback':
         output.stop();
+        voice.stopped();
         return;
       case 'archive':
         onArchive(effect.languages, effect.utterances);

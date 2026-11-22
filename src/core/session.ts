@@ -22,9 +22,10 @@ export type People = Record<Role, Person>;
 export type UtteranceStatus = 'capturing' | 'translating' | 'queued' | 'speaking' | 'done' | 'failed';
 
 /**
- * What decided who spoke, strongest first: a held talk button, a voice verdict (speaker
- * recognition, a later phase; the runner sends `speakerRecognised`), or the language the speech
- * was detected in (the owner's language is the owner, any other is the other person).
+ * What decided who spoke, strongest first: the owner's held talk button, a voice verdict (on-device
+ * speaker recognition against the owner's voiceprint; the runner sends `speakerRecognised`), or
+ * the language the speech was detected in (the owner's language is the owner, any other is the
+ * other person).
  */
 export type RoutedBy = 'button' | 'voice' | 'language';
 
@@ -101,11 +102,12 @@ export type Session = {
    * the tail is the newest input.
    */
   awaitingResponse: UtteranceId[];
-  /** Who is holding a talk button, if anyone. */
-  held?: Role;
+  /** Set while the owner holds the talk button. Hold-to-talk is the owner's only. */
+  held?: 'owner';
   /**
    * The language the other person last spoke in this conversation, from the interpreter's
-   * reports. Unset until they speak; a new conversation or a new setup clears it.
+   * reports. Unset until they speak; the conversation ending (stopped or failed), a new
+   * conversation or a new setup clears it, so "them" goes back to the picked language.
    */
   otherLanguage?: string;
   nextId: number;
@@ -118,12 +120,16 @@ export type Pcm = Int16Array;
 export type SessionEvent =
   | { type: 'start' }
   | { type: 'stop' }
-  /** Replace the setup. Only between sessions: a live session was opened for the old one. */
+  /**
+   * Replace the setup. Only between sessions: a live session was opened for the old one. A setup
+   * in which the owner and the other person share a language is refused (see `validPeople`).
+   */
   | { type: 'configure'; people: People; settings: SessionSettings }
   | { type: 'connected' }
   | { type: 'connectFailed'; kind: 'token' | 'socket'; message: string }
   | { type: 'connectionLost'; kind: 'socket' | 'timeLimit'; message: string }
   | { type: 'audioFailed'; kind: 'micDenied' | 'mic'; message: string }
+  /** Hold-to-talk is the owner's only: a press for 'other' is ignored. */
   | { type: 'pressTalk'; speaker: Role }
   | { type: 'releaseTalk'; speaker: Role }
   | { type: 'speechStarted' }
@@ -133,10 +139,17 @@ export type SessionEvent =
   /** The interpreter reports the language of the utterance it is answering. */
   | { type: 'sourceLanguage'; language: string }
   /**
-   * A voice verdict on the speech being captured (else the newest sent turn). Seam for speaker
-   * recognition; nothing sends it yet. Overrides language routing, never a held button.
+   * A voice verdict: the utterance's voice matched the owner's voiceprint, or clearly did not.
+   * On `utteranceId` (the runner judges after capture ends, so the verdict may arrive once newer
+   * speech is being captured), else on the speech being captured, else the newest sent turn.
+   * Overrides language routing, never a held button.
    */
-  | { type: 'speakerRecognised'; speaker: Role }
+  | { type: 'speakerRecognised'; speaker: Role; utteranceId?: UtteranceId }
+  /**
+   * The utterance's voice is Vorp's own (its voiceprint, learnt from what it played): an echo.
+   * Dropped like a transcript echo, while it is still capturing or translating.
+   */
+  | { type: 'echoRecognised'; utteranceId: UtteranceId }
   /** A caption-only note on the utterance being answered. */
   | { type: 'note'; text: string }
   | { type: 'outputAudio'; pcm: Pcm }
@@ -156,6 +169,12 @@ export type Effect =
   | { type: 'holdAudio'; maxSeconds: number }
   | { type: 'releaseAudio' }
   | { type: 'stopCapture' }
+  /**
+   * An utterance's capture ended (it was not dropped): judge its voice from the microphone audio
+   * sent since the previous one. Derived, see `capturesEnded`; the verdict comes back as
+   * `speakerRecognised` or `echoRecognised`, or nothing when unsure.
+   */
+  | { type: 'recogniseVoice'; utteranceId: UtteranceId }
   | { type: 'beginTurn' }
   | { type: 'endTurn' }
   | { type: 'enqueuePlayback'; utteranceId: UtteranceId; pcm: Pcm }
@@ -217,6 +236,14 @@ export function speakerOf(people: People, language: string): Role {
   return sameLanguage(people.owner.language, language) ? 'owner' : 'other';
 }
 
+/**
+ * Whether a setup can be used: the owner and the other person must not share a language
+ * (`sameLanguage`), since the language is what tells them apart when nothing else does.
+ */
+export function validPeople(people: People): boolean {
+  return !sameLanguage(people.owner.language, people.other.language);
+}
+
 /** BCP-47 match, falling back to the primary subtag ('fr-FR' matches 'fr'). */
 export function sameLanguage(a: string, b: string): boolean {
   const x = a.toLowerCase();
@@ -268,6 +295,19 @@ export function isEcho(captured: string, spoken: string, threshold: number): boo
   return heard.filter((w) => said.has(w)).length / heard.length >= threshold;
 }
 
+/**
+ * Vorp heard itself: fail the utterance as an echo. It stays in awaitingResponse so the model's
+ * reply to it is dropped too.
+ */
+function dropEcho(s: Session, id: UtteranceId): Session {
+  return patch(s, id, () => ({ status: 'failed', error: 'echo' }));
+}
+
+/** Whether a voice verdict may still change an utterance: known, not dropped, not on a held button. */
+function judgeable(u: Utterance | undefined): u is Utterance {
+  return u !== undefined && u.status !== 'failed' && u.routedBy !== 'button';
+}
+
 function headId(s: Session): UtteranceId | undefined {
   return s.awaitingResponse[0];
 }
@@ -312,7 +352,8 @@ const RELEASE: Effect[] = [{ type: 'stopPlayback' }, { type: 'disconnect' }, { t
  * keep it if something was heard. A failed conversation is over too; 'start' begins a new one.
  */
 function end(s: Session, connection: 'idle' | 'failed', reason: string, error: SessionError | undefined): Transition {
-  const ended: Session = { ...failInFlight(s, reason), connection, error };
+  // The detected language is forgotten: "them" goes back to the picked language.
+  const ended: Session = { ...failInFlight(s, reason), connection, error, otherLanguage: undefined };
   const heard = ended.utterances.filter(wasHeard);
   const languages = { owner: s.people.owner.language, other: theirLanguage(s) };
   const archive: Effect[] = heard.length > 0 ? [{ type: 'archive', languages, utterances: heard }] : [];
@@ -360,6 +401,8 @@ function step(s: Session, e: SessionEvent): Transition {
 
     case 'configure':
       if (s.connection !== 'idle' && s.connection !== 'failed') return [s, []];
+      // The same language on both sides is blocked: the previous setup stays.
+      if (!validPeople(e.people)) return [s, []];
       return [{ ...s, people: e.people, settings: e.settings, otherLanguage: undefined }, []];
 
     case 'stop':
@@ -402,14 +445,15 @@ function step(s: Session, e: SessionEvent): Transition {
     }
 
     case 'pressTalk': {
-      if (s.connection !== 'open' || s.held !== undefined) return [s, []];
+      // Hold-to-talk is the owner's only: the other person is recognised by voice or language.
+      if (e.speaker !== 'owner' || s.connection !== 'open' || s.held !== undefined) return [s, []];
       const current = capturingUtterance(s);
       // A held button overrides detection: it takes over the speech being captured, if any.
       const [next] =
         current === undefined
-          ? openUtterance(s, e.speaker, 'button')
-          : [patch(s, current.id, () => ({ speaker: e.speaker, routedBy: 'button' as const }))];
-      return [{ ...next, held: e.speaker }, [{ type: 'beginTurn' }]];
+          ? openUtterance(s, 'owner', 'button')
+          : [patch(s, current.id, () => ({ speaker: 'owner' as const, routedBy: 'button' as const }))];
+      return [{ ...next, held: 'owner' }, [{ type: 'beginTurn' }]];
     }
 
     case 'releaseTalk': {
@@ -451,10 +495,7 @@ function step(s: Session, e: SessionEvent): Transition {
         const spoken = [...others.filter((o) => o.status === 'queued' || o.status === 'speaking'), ...recent]
           .map((o) => o.translation)
           .join(' ');
-        if (isEcho(u.source, spoken, s.settings.echoMatch)) {
-          // Vorp heard itself. Stay in awaitingResponse so the model's reply to it is dropped too.
-          return [patch(next, id, () => ({ status: 'failed', error: 'echo' })), []];
-        }
+        if (isEcho(u.source, spoken, s.settings.echoMatch)) return [dropEcho(next, id), []];
       }
       if (e.finished && u.status === 'capturing' && s.held === undefined) {
         next = patch(next, id, () => ({ status: 'translating' }));
@@ -486,10 +527,16 @@ function step(s: Session, e: SessionEvent): Transition {
     }
 
     case 'speakerRecognised': {
-      const id = inputOwnerId(s);
-      const u = find(s, id);
-      if (u === undefined || u.status === 'failed' || u.routedBy === 'button') return [s, []];
+      const u = find(s, e.utteranceId ?? inputOwnerId(s));
+      if (!judgeable(u)) return [s, []];
       return [followOther(patch(s, u.id, () => ({ speaker: e.speaker, routedBy: 'voice' as const })), u.id), []];
+    }
+
+    case 'echoRecognised': {
+      const u = find(s, e.utteranceId);
+      // Once its reply is being played it is too late to drop; the transcript guard may still.
+      if (!judgeable(u) || (u.status !== 'capturing' && u.status !== 'translating')) return [s, []];
+      return [dropEcho(s, u.id), []];
     }
 
     case 'outputAudio': {
@@ -552,7 +599,7 @@ function step(s: Session, e: SessionEvent): Transition {
  */
 export function transition(s: Session, e: SessionEvent): Transition {
   const [next, stepped] = step(s, e);
-  const effects = [...stepped, ...holdEffects(s, next)];
+  const effects = [...stepped, ...holdEffects(s, next), ...capturesEnded(s, next)];
   const was = micOpen(s);
   const now = micOpen(next);
   if (was === now) return [next, effects];
@@ -561,6 +608,15 @@ export function transition(s: Session, e: SessionEvent): Transition {
   const flush =
     next.connection === 'open' && next.settings.detection === 'auto' && !effects.some((x) => x.type === 'endTurn');
   return [next, [{ type: 'stopCapture' }, ...effects, ...(flush ? [{ type: 'endTurn' } as const] : [])]];
+}
+
+/** Utterances that were capturing and now are not, and were not dropped: their voice can be judged. */
+function capturesEnded(s: Session, next: Session): Effect[] {
+  const ended = (u: Utterance) => {
+    const now = find(next, u.id)?.status;
+    return u.status === 'capturing' && now !== undefined && now !== 'capturing' && now !== 'failed';
+  };
+  return s.utterances.filter(ended).map((u) => ({ type: 'recogniseVoice', utteranceId: u.id }));
 }
 
 function holdEffects(s: Session, next: Session): Effect[] {

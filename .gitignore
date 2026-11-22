@@ -34,3 +34,6 @@ npm-debug.*
 server/.zig-cache/
 server/zig-out/
 server/zig-pkg/
+
+# voiceprint runtime, copied from node_modules by scripts/voiceprint/assets.ts
+public/voiceprint/

@@ -1,5 +1,5 @@
 /// <reference types="bun" />
-import { expect, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 
 import { DEFAULT_PEOPLE } from '@/config/conversation';
 import { DEFAULT_SETTINGS } from '@/config/policies';
@@ -12,7 +12,9 @@ import {
   type Services,
   type Translator,
   type TranslatorEvent,
+  type VoiceEmbedder,
 } from '@/services/types';
+import { NO_VOICE } from '@/services/no-voice';
 
 import { createRuntime } from './runtime';
 
@@ -23,7 +25,7 @@ const settle = async () => {
   for (let i = 0; i < 4; i++) await Promise.resolve();
 };
 
-function fakes(failures: { input?: Error; connect?: Error } = {}) {
+function fakes(failures: { input?: Error; connect?: Error } = {}, voice: VoiceEmbedder = NO_VOICE) {
   const calls: string[] = [];
   let chunk: ((pcm: Int16Array) => void) | undefined;
   let translatorEvent: ((e: TranslatorEvent) => void) | undefined;
@@ -68,7 +70,7 @@ function fakes(failures: { input?: Error; connect?: Error } = {}) {
       return () => {};
     },
   };
-  const services: Services = { input, output, translator, recap: { summarise: async () => ({}) } };
+  const services: Services = { input, output, translator, recap: { summarise: async () => ({}) }, voice };
   return {
     services,
     calls,
@@ -171,4 +173,72 @@ test('service errors arrive as typed session errors', async () => {
   c.dispatch({ type: 'start' });
   await settle();
   expect(c.store.get().error?.kind).toBe('socket');
+});
+
+describe('voices', () => {
+  // A stand-in model: the sample value names the voice. The owner speaks at 8000, the other
+  // person at -8000, and Vorp at 5000.
+  const VOICES: Record<number, number[]> = { 8000: [1, 0, 0], [-8000]: [0, 1, 0], 5000: [0, 0, 1] };
+  const voice: VoiceEmbedder = { available: true, load: async () => {}, embed: async (pcm) => VOICES[pcm[0]] };
+  const owner = () => [1, 0, 0];
+  /** Seconds of microphone audio at 16 kHz in 100 ms chunks. */
+  const speak = (f: ReturnType<typeof fakes>, seconds: number, value: number) => {
+    for (let i = 0; i < seconds * 10; i++) f.mic(new Int16Array(1600).fill(value));
+  };
+  const turn = (f: ReturnType<typeof fakes>, text: string, language?: string) => {
+    f.server({ type: 'speechStarted' });
+    f.server({ type: 'inputTranscript', text, language });
+    f.server({ type: 'speechEnded' });
+  };
+
+  test("the owner's voice names the speaker over the detected language", async () => {
+    const f = fakes({}, voice);
+    const rt = createRuntime(f.services, DEFAULT_PEOPLE, DEFAULT_SETTINGS, undefined, owner);
+    rt.dispatch({ type: 'start' });
+    await settle();
+    speak(f, 2, 8000);
+    turn(f, 'Bonjour', 'fr');
+    await settle();
+    expect(rt.store.get().utterances[0]).toMatchObject({ speaker: 'owner', routedBy: 'voice' });
+  });
+
+  test('too little voice to judge, or no owner enrolled: the language decides', async () => {
+    const short = fakes({}, voice);
+    const a = createRuntime(short.services, DEFAULT_PEOPLE, DEFAULT_SETTINGS, undefined, owner);
+    a.dispatch({ type: 'start' });
+    await settle();
+    speak(short, 1, 8000);
+    turn(short, 'Bonjour', 'fr');
+    await settle();
+    expect(a.store.get().utterances[0]).toMatchObject({ speaker: 'other', routedBy: 'language' });
+
+    const none = fakes({}, voice);
+    const b = createRuntime(none.services, DEFAULT_PEOPLE, DEFAULT_SETTINGS);
+    b.dispatch({ type: 'start' });
+    await settle();
+    speak(none, 2, 8000);
+    turn(none, 'Bonjour', 'fr');
+    await settle();
+    expect(b.store.get().utterances[0]).toMatchObject({ speaker: 'other', routedBy: 'language' });
+  });
+
+  test("Vorp learns its own voice from what it plays and drops it when the microphone hears it", async () => {
+    const f = fakes({}, voice);
+    const rt = createRuntime(f.services, DEFAULT_PEOPLE, DEFAULT_SETTINGS, undefined, owner);
+    rt.dispatch({ type: 'start' });
+    await settle();
+    speak(f, 2, -8000);
+    turn(f, 'Hola amigo', 'es');
+    // The translation: 2.5 s of Vorp's voice at 24 kHz.
+    f.server({ type: 'outputAudio', pcm: new Int16Array(60000).fill(5000) });
+    f.server({ type: 'turnComplete' });
+    await settle();
+    speak(f, 2, 5000);
+    turn(f, 'Hello friend');
+    await settle();
+    expect(rt.store.get().utterances.map((u) => [u.speaker, u.routedBy, u.status, u.error])).toEqual([
+      ['other', 'voice', 'queued', undefined],
+      [undefined, 'language', 'failed', 'echo'],
+    ]);
+  });
 });
