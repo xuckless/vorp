@@ -147,7 +147,7 @@ function EndCard({ saved, recap, seconds, onNext, onNotNow }: { saved: boolean; 
     <div className="vp-card vp-frost vp-card-problem vp-end" role="status">
       <div className="vp-card-face">
         <p className="vp-card-title">{saved ? 'Conversation saved' : 'Conversation ended'}</p>
-        <p className="vp-card-small vp-mute">{saved ? (recap ? 'It’s in History, with the recap.' : 'It’s in History.') : 'Nothing was said, so nothing was kept.'}</p>
+        <p className="vp-card-small vp-mute">{saved ? (recap ? 'It’s in History, with the recap.' : 'It’s in History.') : 'Nothing was said, so nothing was saved.'}</p>
         <div className="vp-next">
           <svg className="vp-next-ring" viewBox="0 0 36 36" aria-hidden="true">
             <circle cx="18" cy="18" r="15" className="track" />
@@ -229,19 +229,24 @@ export function PairTalk({
   const lit = pairLight(talk);
 
   let body: ReactNode;
-  if (talk.end?.kind === 'guest')
+  // Ended for the guest, or this phone's own link dropped (either side): one card, Continue.
+  // The host reads English, with History in place of the guest's "ask for a new code".
+  const dropped = !!talk.end?.dropped;
+  if (talk.end?.kind === 'guest' || (talk.end?.kind === 'host' && dropped)) {
+    const title = !dropped ? t('endedTitle') : guest ? t('droppedTitle') : 'Your connection dropped';
+    const text = !dropped ? t('endedBody') : guest ? t('droppedBody') : 'The conversation stopped on this phone. What was said is in History.';
     body = (
-      <div className="vp-card vp-frost vp-card-problem">
+      <div className="vp-card vp-frost vp-card-problem" role="status">
         <div className="vp-card-face">
-          <p className="vp-card-title">{t('endedTitle')}</p>
-          <p className="vp-card-small vp-mute">{t('endedBody')}</p>
-          <button className="vp-btn vp-frost vp-card-action" onClick={onContinue}>
+          <p className="vp-card-title">{title}</p>
+          <p className="vp-card-small vp-mute">{text}</p>
+          <button className="vp-btn vp-frost vp-card-action" onClick={guest ? onContinue : onNotNow}>
             {t('continue')}
           </button>
         </div>
       </div>
     );
-  else if (talk.end?.kind === 'host')
+  } else if (talk.end?.kind === 'host')
     body = <EndCard saved={talk.end.saved} recap={talk.end.recap} seconds={boothSeconds} onNext={onNextVisitor} onNotNow={onNotNow} />;
   else if (talk.problem) {
     const p = PROBLEM[talk.problem];

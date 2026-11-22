@@ -159,6 +159,24 @@ describe('the guest', () => {
     expect(at('not_found')).toBe('expired');
   });
 
+  test('no network, or a server that will not talk: said apart, and Join again works (no code spent)', () => {
+    const joining: PairEvent[] = [{ type: 'join', language: 'fr' }, { type: 'audioOpened' }];
+    const [offline] = run([...joining, { type: 'dropped', offline: true }], guest());
+    expect(offline.problem).toBe('offline');
+    const [down] = run([...joining, { type: 'dropped' }], guest());
+    expect(down.problem).toBe('down');
+    expect(run([...joining, { type: 'refused', code: 'bad_message' }], guest())[0].problem).toBe('down');
+    // "They left before you joined" only when the host really left.
+    expect(run([...joining, { type: 'refused', code: 'host_gone' }], guest())[0].problem).toBe('hostLeft');
+    expect(run([{ type: 'join', language: 'fr' }], offline)[0].status).toBe('opening');
+  });
+
+  test('its own link lost mid-call: the guest ends, then Continue says goodbye', () => {
+    const [p] = run([...guestLive, { type: 'rejoining' }, { type: 'lost' }, { type: 'continue' }], guest());
+    expect(p.ended).toBe('lost');
+    expect(p.status).toBe('done');
+  });
+
   test('Stop ends it for both, keeps nothing, and leaves for the landing page', () => {
     const [p, log] = run([...guestLive, ...ownTurn('Bonjour à tous', 'fr', 'Hello everyone'), { type: 'stop' }, { type: 'timer', what: 'leave', room: 1 }], guest());
     const stop = log[log.length - 2];
@@ -342,10 +360,13 @@ describe('the end', () => {
     expect(types(log[log.length - 1])).not.toContain('archive');
   });
 
-  test('this phone’s link not coming back ends it', () => {
-    const [p] = run([...hostLive, { type: 'rejoining' }, { type: 'lost' }], host());
+  test('this phone’s link not coming back ends it, with no booth countdown; Continue goes to Start', () => {
+    const [p, log] = run([...hostLive, ...ownTurn('Where is the bus', 'en', 'Où est le bus'), { type: 'rejoining' }, { type: 'lost' }], host());
     expect(p.status).toBe('ended');
     expect(p.ended).toBe('lost');
+    expect(types(log[log.length - 1])).toContain('archive');
+    expect(log.flat().some((e) => e.type === 'timer' && e.what === 'booth')).toBe(false);
+    expect(run([{ type: 'cancel' }], p)[0].status).toBe('off');
   });
 
   test('rejoining mutes the microphone, and rejoining brings it back', () => {

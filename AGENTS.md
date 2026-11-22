@@ -531,8 +531,12 @@ The client contract is `docs/pairing-protocol.md`; change it with the server.
   code) and the design shows it, greyed, before Join. Page language and first pick from
   `navigator.languages` (`guestLanguage`), names in their own language (`nativeName`, from
   `Intl.DisplayNames`). Join opens the mic and the speaker first; the code is spent only once
-  they are open, so a denied mic can "Join again". Any refusal without copy of its own
-  (`unavailable`, a network failure) uses "They left before you joined". After the goodbye it
+  they are open, so a denied mic can "Join again". No network (`offline`, the socket never
+  opened and the phone is offline) and a server that cannot be reached or will not talk (`down`)
+  have their own copy and "Join again" (the code is not spent); "They left before you joined" is
+  only `host_gone`. This phone's own link not coming back (`ended: lost`) is the dropped card with
+  Continue: the guest then says goodbye; the host (English) goes to Start with no booth countdown.
+  The host's end card with nothing kept says "Nothing was said, so nothing was saved". After the goodbye it
   goes to `LANDING_URL?from=session&lang=<code>` (`config/pairing.ts`, a placeholder until the
   owner picks GitHub Pages or Cloudflare Pages; `EXPO_PUBLIC_LANDING_URL` overrides).
 - **Light guest page**: Metro puts any module shared by two async chunks into `__common`, which

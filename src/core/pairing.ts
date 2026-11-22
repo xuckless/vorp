@@ -57,7 +57,12 @@ export type RoomStatus =
   /** This phone could not get in or stay in; see `problem`. */
   | 'failed';
 
-export type RoomProblem = 'micDenied' | 'used' | 'expired' | 'hostLeft' | 'unavailable';
+/**
+ * Why this phone could not get in. `offline`: the phone has no network; `down`: the server could
+ * not be reached or would not talk (it is not the phone); `unavailable`: the host could not make a
+ * code; `hostLeft`: the host really left before the guest joined.
+ */
+export type RoomProblem = 'micDenied' | 'used' | 'expired' | 'hostLeft' | 'offline' | 'down' | 'unavailable';
 
 /** Why a room ended. `lost`: this phone's own link did not come back in time. */
 export type EndReason = 'host_stopped' | 'guest_stopped' | 'host_left' | 'guest_left' | 'lost';
@@ -170,8 +175,11 @@ export type PairEvent =
   | { type: 'peerBack' }
   | { type: 'ended'; reason: EndReason | 'expired' }
   | { type: 'refused'; code: RefusalCode }
-  /** The socket closed without `ended` and nothing will bring it back (before pairing). */
-  | { type: 'dropped' }
+  /**
+   * The socket closed without `ended` and nothing will bring it back (before pairing). `offline`:
+   * it never opened and the phone has no network.
+   */
+  | { type: 'dropped'; offline?: boolean }
   /** The socket closed without `ended` while paired: it is rejoining with its key. */
   | { type: 'rejoining' }
   /** Rejoining gave up. */
@@ -418,7 +426,7 @@ function chain(t: PairTransition, f: (p: Pairing) => PairTransition): PairTransi
 /** Start this phone's session for the other person's language, once it is known. */
 function begin(p: Pairing, peerLanguage: string): PairTransition {
   const who = people(p.setup, peerLanguage);
-  if (!validPeople(who)) return fail({ ...p, peerLanguage }, 'unavailable');
+  if (!validPeople(who)) return fail({ ...p, peerLanguage }, p.role === 'host' ? 'unavailable' : 'down');
   const configured = chain([{ ...p, peerLanguage }, []], (x) => own(x, { type: 'configure', people: who, settings: p.setup.settings }));
   return chain(configured, (x) => own(x, { type: 'start' }));
 }
@@ -453,10 +461,10 @@ const problemOf: Record<RefusalCode, RoomProblem> = {
   expired: 'expired',
   not_found: 'expired',
   host_gone: 'hostLeft',
-  bad_key: 'unavailable',
-  bad_message: 'unavailable',
-  replaced: 'unavailable',
-  rate_limited: 'unavailable',
+  bad_key: 'down',
+  bad_message: 'down',
+  replaced: 'down',
+  rate_limited: 'down',
 };
 
 /** This phone's session stops and the room is let go; the host keeps the conversation. */
@@ -467,7 +475,8 @@ function finish(p: Pairing, status: 'ended' | 'done' | 'failed', timing: PairTim
   const next: Pairing = { ...stopped, status, ...(ended ? { ended } : {}), saved: keep, peerTalking: false };
   const out: PairEffect[] = [...effects, { type: 'stopIncoming' }, { type: 'closeRoom' }];
   if (keep) out.push({ type: 'archive', languages: { owner: p.setup.language, other: p.peerLanguage! }, utterances: heard });
-  if (status === 'ended' && p.role === 'host') out.push({ type: 'timer', what: 'booth', ms: timing.boothSeconds * 1000, room: p.room });
+  // The booth loop only when the room really ended; a host whose own link dropped goes back to Start.
+  if (status === 'ended' && p.role === 'host' && ended !== 'lost') out.push({ type: 'timer', what: 'booth', ms: timing.boothSeconds * 1000, room: p.room });
   if (status === 'done') out.push({ type: 'timer', what: 'leave', ms: timing.doneMs, room: p.room });
   return [next, out];
 }
@@ -516,7 +525,8 @@ function step(p: Pairing, e: PairEvent, timing: PairTiming): PairTransition {
     case 'audioFailed':
       if (p.status !== 'opening' && p.status !== 'creating' && p.status !== 'connecting' && p.status !== 'waiting') return [p, []];
       // Host: the code made for this room is let go. Guest: no code was spent.
-      return chain(fail(p, e.kind === 'micDenied' ? 'micDenied' : 'unavailable'), (x) => [x, p.status === 'opening' ? [] : [{ type: 'endRoom' }]]);
+      // A guest's microphone that will not open is asked for again, whatever the reason.
+      return chain(fail(p, e.kind === 'micDenied' || p.role === 'guest' ? 'micDenied' : 'unavailable'), (x) => [x, p.status === 'opening' ? [] : [{ type: 'endRoom' }]]);
 
     case 'roomCreated': {
       if (p.status !== 'creating' || e.room !== p.room) return [p, []];
@@ -541,7 +551,7 @@ function step(p: Pairing, e: PairEvent, timing: PairTiming): PairTransition {
       }
       if (p.status !== 'connecting') return [p, []];
       if (p.role === 'host') return [{ ...p, status: 'waiting' }, []];
-      if (e.peerLanguage === undefined) return fail(p, 'unavailable');
+      if (e.peerLanguage === undefined) return fail(p, 'down');
       return chain([{ ...p, status: 'live' }, [{ type: 'cue', kind: 'joined' }]], (x) => begin(x, e.peerLanguage!));
 
     case 'peerJoined':
@@ -575,7 +585,7 @@ function step(p: Pairing, e: PairEvent, timing: PairTiming): PairTransition {
       return fail(p, p.role === 'host' ? 'unavailable' : problemOf[e.code]);
 
     case 'dropped':
-      if (p.status === 'waiting' || p.status === 'connecting') return p.role === 'host' ? startRoom({ ...p, status: 'off' }) : fail(p, 'unavailable');
+      if (p.status === 'waiting' || p.status === 'connecting') return p.role === 'host' ? startRoom({ ...p, status: 'off' }) : fail(p, e.offline ? 'offline' : 'down');
       if (p.status === 'live' || p.status === 'joined') return finish(p, 'ended', timing, 'lost');
       return [p, []];
 

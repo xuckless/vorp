@@ -133,9 +133,16 @@ describe('the paired conversation', () => {
 
   test('ended: the host’s end card says whether it was kept', () => {
     const saved = pairTalkModel(after([...live, ...mine, { type: 'stop' }]))!;
-    expect(saved.end).toEqual({ kind: 'host', saved: true, recap: false });
+    expect(saved.end).toEqual({ kind: 'host', saved: true, recap: false, dropped: false });
     expect(saved.cards).toEqual([]);
-    expect(pairTalkModel(after([...live, { type: 'ended', reason: 'guest_stopped' }]))!.end).toEqual({ kind: 'host', saved: false, recap: false });
+    expect(pairTalkModel(after([...live, { type: 'ended', reason: 'guest_stopped' }]))!.end).toEqual({ kind: 'host', saved: false, recap: false, dropped: false });
+  });
+
+  test('this phone’s own link not coming back: the dropped card, on either phone', () => {
+    expect(pairTalkModel(after([...live, { type: 'rejoining' }, { type: 'lost' }]))!.end).toEqual({ kind: 'host', saved: false, recap: false, dropped: true });
+    const guest = after([{ type: 'join', language: 'fr' }, { type: 'audioOpened' }, { type: 'welcome', peerLanguage: 'en' }], initialPairing('guest', setup, 'C0DE'));
+    expect(pairTalkModel(after([{ type: 'lost' }], guest))!.end).toEqual({ kind: 'guest', dropped: true });
+    expect(pairTalkModel(after([{ type: 'ended', reason: 'host_stopped' }], guest))!.end).toEqual({ kind: 'guest', dropped: false });
   });
 
   test('hands-free off: Hold to talk is there once connected', () => {
@@ -172,6 +179,14 @@ describe('the guest’s page', () => {
     expect(guestPageModel(used, 'fr', 'en').view).toBe('used');
     const talking = after([{ type: 'audioOpened' }, { type: 'welcome', peerLanguage: 'en' }], joining);
     expect(guestPageModel(talking, 'fr', 'en').talk?.them).toBe('en');
+    const offline = after([{ type: 'audioOpened' }, { type: 'dropped', offline: true }], joining);
+    expect(guestPageModel(offline, 'fr', 'en').view).toBe('offline');
+    const down = after([{ type: 'audioOpened' }, { type: 'dropped' }], joining);
+    expect(guestPageModel(down, 'fr', 'en').view).toBe('down');
+    const refused = after([{ type: 'audioOpened' }, { type: 'refused', code: 'rate_limited' }], joining);
+    expect(guestPageModel(refused, 'fr', 'en').view).toBe('down');
+    const left = after([{ type: 'audioOpened' }, { type: 'refused', code: 'host_gone' }], joining);
+    expect(guestPageModel(left, 'fr', 'en').view).toBe('hostLeft');
     const done = after([{ type: 'stop' }], talking);
     expect(guestPageModel(done, 'fr', 'en').view).toBe('done');
   });

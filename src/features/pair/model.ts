@@ -61,7 +61,7 @@ export type PairTalkModel = {
   /** The browser kept playback locked: "Tap to turn on sound". */
   sound: boolean;
   /** It is over: the host's end card (saved or not), or the guest's "They ended the conversation". */
-  end?: { kind: 'host'; saved: boolean; recap: boolean } | { kind: 'guest' };
+  end?: { kind: 'host'; saved: boolean; recap: boolean; dropped: boolean } | { kind: 'guest'; dropped: boolean };
   /** This phone's interpreter could not carry on. */
   problem?: SessionErrorKind;
   handsFree: boolean;
@@ -160,7 +160,15 @@ export function pairTalkModel(p: Pairing): PairTalkModel | undefined {
     cards,
     ...(!ended && p.link !== 'up' ? { aside: 'locked' as const } : !ended && p.peer !== 'here' ? { aside: 'peerAway' as const } : {}),
     sound: p.soundBlocked && !ended,
-    ...(ended ? { end: p.role === 'host' ? { kind: 'host' as const, saved: p.saved, recap: p.setup.settings.behaviours.includes('recap') } : { kind: 'guest' as const } } : {}),
+    ...(ended
+      ? {
+          // `dropped`: this phone's own link did not come back; the room may still be going over there.
+          end:
+            p.role === 'host'
+              ? { kind: 'host' as const, saved: p.saved, recap: p.setup.settings.behaviours.includes('recap'), dropped: p.ended === 'lost' }
+              : { kind: 'guest' as const, dropped: p.ended === 'lost' },
+        }
+      : {}),
     ...(!ended && p.own.connection === 'failed' ? { problem: p.own.error?.kind ?? 'socket' } : {}),
     handsFree,
     held: p.own.held === 'owner',
@@ -213,7 +221,7 @@ export function hostPairModel(p: Pairing, origin: string): HostPairModel | undef
 
 // ---------------------------------------------------------------- the guest's page
 
-export type GuestView = 'pick' | 'joining' | 'micDenied' | 'used' | 'expired' | 'hostLeft' | 'done';
+export type GuestView = 'pick' | 'joining' | 'micDenied' | 'used' | 'expired' | 'hostLeft' | 'offline' | 'down' | 'done';
 
 export type GuestChoice = { value: string; label: string; detail?: string; disabled?: string };
 
@@ -257,15 +265,17 @@ const GUEST_PROBLEM: Record<NonNullable<Pairing['problem']>, GuestView> = {
   used: 'used',
   expired: 'expired',
   hostLeft: 'hostLeft',
-  // No copy of its own (the design has none): the way on is the same, a new code.
-  unavailable: 'hostLeft',
+  offline: 'offline',
+  down: 'down',
+  // The host's own problem (no code made); a guest never has it, but it reads as the server's side.
+  unavailable: 'down',
 };
 
 export function guestPageModel(p: Pairing, pick: string, host: string | undefined): GuestPageModel {
   const talk = pairTalkModel(p);
   let view: GuestView = 'pick';
   if (p.status === 'opening' || p.status === 'connecting') view = 'joining';
-  else if (p.status === 'failed') view = GUEST_PROBLEM[p.problem ?? 'unavailable'];
+  else if (p.status === 'failed') view = GUEST_PROBLEM[p.problem ?? 'down'];
   else if (p.status === 'done') view = 'done';
   const language = p.status === 'off' ? pick : p.setup.language;
   return {

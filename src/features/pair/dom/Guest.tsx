@@ -22,6 +22,9 @@ export function Guest({ page, light, onPick, onJoin }: { page: GuestPageModel; l
     used: { title: t('usedTitle'), body: t('usedBody'), mood: 'unsure' },
     expired: { title: t('expiredTitle'), body: t('expiredBody'), mood: 'sleepy' },
     hostLeft: { title: t('leftTitle'), body: t('leftBody'), mood: 'sad' },
+    // The code is not spent yet in either: Join again.
+    offline: { title: t('offlineTitle'), body: t('offlineBody'), mood: 'unsure', again: true },
+    down: { title: t('downTitle'), body: t('downBody'), mood: 'sleepy', again: true },
   };
   const p = problem[page.view];
 

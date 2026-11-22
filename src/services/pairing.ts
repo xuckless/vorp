@@ -138,7 +138,9 @@ export function createPairingLink(): PairingLink {
     ws.binaryType = 'arraybuffer';
     socket = ws;
     let welcomed = false;
+    let opened = false;
     ws.onopen = () => {
+      opened = true;
       // The host always says hello with its key; the guest only when it rejoins.
       const secret = role === 'host' ? hostKey : rejoin ? key : undefined;
       write({ type: 'hello', role, language, ...(secret ? { key: secret } : {}) });
@@ -188,7 +190,9 @@ export function createPairingLink(): PairingLink {
       clearInterval(ping);
       if (!paired) {
         finish();
-        return emit({ type: 'dropped' });
+        // Never opened with no network: the phone is offline; anything else is the server's side.
+        const offline = !opened && typeof navigator !== 'undefined' && navigator.onLine === false;
+        return emit(offline ? { type: 'dropped', offline: true } : { type: 'dropped' });
       }
       if (!rejoin) {
         rejoinUntil = Date.now() + PAIR_TIMING.rejoinMs;
