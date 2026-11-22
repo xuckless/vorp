@@ -62,6 +62,15 @@ await send('Page.addScriptToEvaluateOnNewDocument', {
 await send('Page.navigate', { url: 'http://localhost:8787/' });
 await wait(4000);
 await evaluate(`[...document.querySelectorAll('[role=button]')].find(b => /start/i.test(b.innerText)).click()`);
+// E2E_PRESS="<button text>:<from s>:<to s>": hold a talk button with the mouse for that span.
+const press = process.env.E2E_PRESS?.split(':');
+if (press) {
+  const [label, from, to] = [press[0], Number(press[1]), Number(press[2])];
+  const at = await evaluate(`(() => { const b = [...document.querySelectorAll('[role=button]')].find(b => b.innerText.includes(${JSON.stringify(label)})); const r = b.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+  const mouse = (type: string) => send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', clickCount: 1 });
+  setTimeout(() => mouse('mousePressed'), from * 1000);
+  setTimeout(() => mouse('mouseReleased'), to * 1000);
+}
 let last = '';
 for (let i = 0; i < Number(process.argv[2] ?? 14); i++) {
   await wait(3000);

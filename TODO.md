@@ -23,55 +23,55 @@ mode applies: reach breadth first, harden in phase 7.
 
 ## Phase 1: Prove the pipeline (Sun 22)
 
-Spikes come first; they decide open points in `AGENTS.md`. Throwaway code is fine here.
+Verified on 21 November against real `gemini-3.8-live` with `bun run e2e:live` (headless
+Chromium, recorded English and French speech through the web build).
 
 - [x] Spike: read the current Gemini Live API docs. Record the model id, audio formats, supported
       languages and voices, session limits and the short-lived token flow in `src/config`
-- [ ] Spike: browser page that streams the microphone to a Live session and plays translated
-      audio back, English ↔ French, with both transcripts
-- [ ] Spike: does the model report the detected input language reliably enough to pick the
-      speaker?
+- [x] Spike: the browser streams the microphone to a Live session and gets translated audio
+      back, English ↔ French, with both transcripts
+- [x] Spike: does the model report the input language? Not on transcripts (`languageCode` is
+      never sent); it does through a declared function call (`report_language`), reliably
 - [x] Token server in `server/` with Anole: `POST /token` returns a short-lived Live token
-      (issued real tokens with the real key on 21 November)
 - [x] `src/core`: `Participant`, `Utterance`, `Session` types; the utterance lifecycle enum
 - [x] `src/core`: `transition(state, event) -> [state, effects]` with tests for the basic turn
 - [x] Effect runner: executes effects, feeds results back as events
 - [x] `AudioInput` interface and web implementation (AudioWorklet, 16 kHz PCM, echo cancellation
-      on)
-- [ ] `AudioOutput` interface and web implementation (gapless PCM playback queue, output level
-      tap for the visualiser) (written; never heard real model audio)
-- [ ] `Translator` interface and Gemini Live implementation (connect, stream, transcripts,
-      reconnect with a fresh token) (written on `@google/genai`; needs a real key to verify)
+      on). Fixed: it stalled after one chunk
+- [x] `AudioOutput` interface and web implementation (gapless PCM playback queue, output level
+      tap for the visualiser). Lifecycle verified; nobody has listened to it on speakers yet
+- [x] `Translator` interface and Gemini Live implementation (connect, stream, transcripts)
+- [ ] Translator reconnect with a fresh token after a drop or `goAway` (built; not exercised live)
 - [x] Interpreter system prompt, built from the participants table
-- [ ] Bare screen: two push-to-talk buttons, captions as plain text (built; renders on web). **Milestone: a two-way
+- [x] Bare screen: two push-to-talk buttons, captions as plain text. **Milestone: a two-way
       conversation works on web**
-
-**Live verification is blocked on billing (21 November).** `bun run e2e:live` reaches Google with
-a real token, and Google closes the session: "Your prepayment credits are depleted". Every
-unticked item in phases 1 and 2 that needs a real session waits on credits in the Gemini project.
 
 ## Phase 2: Asynchronous and hands-free (Mon 23)
 
-Built and tested offline with reducer and runner tests; nothing here has met a real Live
-session yet (no key). Findings are under "Hands-free turns" in `AGENTS.md`.
+Verified live on 21 November unless noted. Findings are under "Hands-free turns" in `AGENTS.md`.
 
 - [x] Playback queue in the reducer: utterances speak in order while capture continues
 - [x] Reducer tests: speech during playback, three utterances in flight, a failure mid-queue
-- [ ] Voice activity detection ends the turn (Live API's own first; client-side only if needed)
-      (server detection with `NO_INTERRUPTION` wired; unverified without a key)
-- [ ] Language detection routes the utterance: speaker identity and target language (routes on
-      the transcript's `languageCode`, output language as fallback; unverified that
-      `gemini-3.8-live` fills it)
+- [x] Voice activity detection ends the turn (the Live API's own, with `NO_INTERRUPTION`)
+- [x] Microphone audio is held while the model replies and sent when the reply completes: the
+      model does not listen during its own reply (`E2E_GAP=1.5 bun run e2e:live`)
+- [x] Language routes the utterance: the model calls `report_language`; captions show the right
+      speaker and direction
 - [x] Echo guard: drop captured utterances whose transcript matches the one being spoken
-- [x] `pauseMicWhileSpeaking` emergency flag
-- [ ] Push-to-talk stays as a fallback and overrides detection while held (built: button names
-      the speaker, release sends `audioStreamEnd`; unverified without a key)
+      (reducer tests only; needs a real loudspeaker and microphone to verify)
+- [x] `pauseMicWhileSpeaking` emergency flag (reducer tests only)
+- [x] Push-to-talk overrides detection while held: the button names the speaker and release
+      ends the turn (`E2E_PRESS="French:1.5:8.5" bun run e2e:live`)
 - [x] Overlap policy as a table row (`queue`), with the reducer reading the policy
 - [x] Error paths as events: microphone denied, token failure, socket drop, session time limit
+      (a refused session was seen live; the others are reducer tests only)
 - [x] Input transcripts attach to the utterance being captured, not the oldest unanswered one
-      (phase 1 gap)
 - [x] Bare screen shows the mode (hands-free or held button) and the queue as plain text
-- [ ] **Milestone: hands-free two-way conversation on web, listening while speaking**
+- [x] **Milestone: hands-free two-way conversation on web, listening while speaking**
+- [ ] Try it by hand on a real device with a loudspeaker: echo, real voices, a noisy room
+- [ ] The model sometimes speaks a placeholder such as "<no speech detected>" for noise; make
+      it stay silent or drop those replies
+- [ ] A long session: `goAway`, reconnect and resumption
 
 ## Phase 3: Design system and effects (Tue 24)
 

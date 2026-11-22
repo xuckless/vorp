@@ -239,11 +239,34 @@ redirects). The tables live in `src/config` (`models.ts`, `voices.ts`, `language
 - TypeScript 6 includes no global `types` by default; test files start with
   `/// <reference types="bun" />` so Bun globals stay out of app code.
 
-### Hands-free turns (docs spike, 21 November 2026)
+### Hands-free turns (21 November 2026)
 
 Read from `aistudio.google.com/docs/live-api/capabilities`, `/session-management`,
-`/best-practices`, `/models/gemini-3.8-live` and `/api-reference/live`. None of it is verified
-against a live session yet (no key on the dev machine).
+`/best-practices`, `/models/gemini-3.8-live` and `/api-reference/live`, then checked against
+real `gemini-3.8-live` sessions with `bun run e2e:live`.
+
+**Verified live:**
+
+- `voiceActivity` (`ACTIVITY_START` / `ACTIVITY_END`) arrives, and the input transcript arrives
+  whole at the end of the utterance.
+- **Transcripts carry no `languageCode`.** The model reports the language itself through a
+  declared function, `report_language` (`languageTool` in `prompts.ts`), called at the end of the
+  utterance; the reducer routes the speaker from it (`sourceLanguage`). The call ends a model
+  turn of its own, so the translator swallows that turn's `turnComplete`. It adds no noticeable
+  delay. Identifying the language from the transcript text was tried and dropped: trigram
+  detection gets short phrases wrong ("Merci beaucoup").
+- **With `NO_INTERRUPTION` the model does not listen while it produces a reply**: speech sent
+  during a reply is lost. So the runner holds microphone audio from the end of a turn until that
+  reply's `turnComplete` and then sends it in one burst, which the server accepts and transcribes
+  correctly. The hold is derived state (`replying`) and capped by the overlap row's `holdSeconds`.
+- The interpreter prompt holds: the model interprets both ways and does not answer questions.
+- Tokens work on `v1beta`, although the SDK warns they are `v1alpha` only.
+- Gemini Live's voice detection ignores robotic synthetic voices (espeak); the test fixtures are
+  spoken by `gemini-3.8-flash-tts`.
+- For noise the model may speak a placeholder such as "<no speech detected>" instead of staying
+  silent. Not fixed yet.
+
+**From the docs, as built:**
 
 - **The server's detection is used; no client-side VAD.** Automatic activity detection stays on
   (`detection: 'auto'`, the default). End of turn is `silenceDurationMs: 700` (`LIVE_VAD` in
@@ -268,8 +291,8 @@ against a live session yet (no key on the dev machine).
   `inputAudioTranscription.languageCodes` as hints (Vorp sends the participants' languages). The
   guide pages never mention it, so whether `gemini-3.8-live` fills it is unverified. Routing:
   held button, else input `languageCode`, else (two people) the participant whose language
-  differs from the output transcript's `languageCode`, else unknown. If neither is filled in
-  practice, the next step is a declared tool the model calls with the detected language.
+  differs from the output transcript's `languageCode`, else unknown. In practice neither is
+  filled; see `report_language` above.
 - **Speech start / end events**: the reference documents a top-level `voiceActivity`
   (`type: ACTIVITY_START | ACTIVITY_END`); the SDK passes Gemini API messages through raw. If it
   does not arrive, an utterance opens on its first input transcript and ends on the first model
