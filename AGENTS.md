@@ -70,7 +70,7 @@ src/app/        routes only (Expo Router): compose features, no logic
 src/core/       pure domain: types, the session reducer, effects as data. No React, no I/O.
 src/services/   I/O behind interfaces: audio capture, audio playback, translator, storage
 src/features/   screens and their view models (setup, conversation, settings)
-src/ui/         design system: tokens, primitives, slots, effects
+src/ui/         design system: tokens, primitives, slots, effects, dom (the design's DOM components)
 src/config/     data tables: languages, voices, models, feature flags, policies
 ```
 
@@ -153,10 +153,14 @@ Libraries.dev, MIT, © 2026 Jakub Antalik).
 | Voice distortion | `distortion-waves` | WebGL + DOM snapshot |
 | Agent avatar | `bot-avatars` | Canvas 2D + CSS |
 | Voice visualiser (candidates) | `voice-ring`, `voice-glow` | Canvas 2D / WebGL, Web Audio |
+| Hold to talk glow, language card and Stop beams | `voice-glow`, `border-beam` | Canvas 2D, CSS |
+| The interpreter (phase 3) | `blobatar` (Alain00/blobatar, MIT) | SVG + CSS |
+| Language swap (stubbed out, not rendered) | `liquid-gooey` | SVG filters |
 
 These are browser code (DOM, canvas, WebGL, Web Audio) ported to Preact. They move to React here,
-keep their engine files unchanged where possible, and sit behind slots so the app never imports a
-vendor path directly. How they run on native is recorded under Decisions.
+keep their engine files unchanged where possible, and sit behind slots or the DOM design system
+(`src/ui/dom`) so features never import a vendor path directly. How they run on native is
+recorded under Decisions.
 
 ## Code principles
 
@@ -510,9 +514,12 @@ app; a voice echo filter instead of muting the microphone.
   `speakerRecognised { speaker, utteranceId }` when confident, nothing when unsure, not
   enrolled or too short. The verdict names its utterance because it arrives after newer speech
   may have started.
-- **Voice echo filter**: Vorp's own voice is learnt per conversation from the translations it
-  plays (24 kHz output resampled to 16 kHz; the first five long enough are averaged, reset when
-  the interpreter voice changes). An utterance closer to it than to the owner's print and above
+- **Voice echo filter**: Vorp's own voice is learnt from the translations it plays (24 kHz
+  output resampled to 16 kHz; the first five long enough are averaged) and remembered on the
+  device per interpreter voice (phase 3: `features/conversation/interpreter-prints.ts`, key
+  `vorp.interpreterPrints.v1`, embeddings only, a print from another model discarded), so the
+  filter works from the first reply of the next conversation with that voice. Deleting the
+  owner's voiceprint never touches it. An utterance closer to it than to the owner's print and above
   the echo threshold is `echoRecognised`, dropped through the same path as a transcript echo,
   while it is still capturing or translating (too late once its reply plays). It works without
   enrolment. The transcript guard stays.
@@ -522,6 +529,72 @@ app; a voice echo filter instead of muting the microphone.
   of one voice scored 0.08–0.49 against each other and different voices up to 0.38; two-clip
   prints separated better (same voice 0.52, others at most 0.16; Vorp's voice 0.43–0.48 against
   its print, other voices at most 0.30). Short utterances will often be unsure.
+
+### The design, ported (phase 3, 22 November 2026)
+
+The owner signed off a design (`xuckless/the-wallpaper-project` `src/vorp/`, a Preact prototype;
+its README records every decision). Owner decision: **port it as web (DOM)**.
+
+- **Layout.** `src/ui/dom` is the design system as DOM: the stylesheet (`style.ts`, its colours,
+  glass tiers and curves built from `ui/tokens`), controls (Presence, Segmented, Toggle, Select),
+  the WebGL aurora, the ring with the blob, the trace logo (`Mark`), the caption card, the
+  glow and beam layers, the light (`light.ts`, a mutable object the canvases read per frame and
+  components set through `tune`). The screens are `src/features/app/dom/*` (Start with the
+  settings panel, Talk, Enrol, History with Transcript), under one Expo DOM component,
+  `VorpDom` ('use dom'): inline on web, one web view on native. They render from plain data in
+  `features/app/model.ts` (pure, tested: `talkModel`, `setupModel` / `setupEvent`,
+  `languageChoices`, `enrolModel`, `historyItem`, `copyText`) and call back with what was tapped;
+  `features/app/AppScreen.tsx` owns the controller (`features/conversation/controller.ts`) and
+  turns callbacks into events. Only visual state lives in the DOM (an open dropdown, the blob's
+  flight from Start). The voice level is a getter on web and sampled numbers on native
+  (`@/ui/dom/level`); the root feeds it into the light every frame.
+- **Tokens** now hold the design's palettes, the brand `SPECTRUM` and its curves
+  (`easing.enter` = `.16,1,.3,1`, `easing.move` = `.65,0,.35,1`). The design's other
+  measurements (durations, frost milk on paper, card solids) stay in its stylesheet.
+- **Slots** stay for the gallery and the React Native surfaces; the design's screens draw their
+  engines directly inside the DOM tree, so the slot registry does not choose them.
+- **Pages**: the conversation shows whenever one is running (`talkModel` is defined unless the
+  session is idle, failed included, so its error shows in place); otherwise the page in
+  `Vorp.tsx` (start, history, enrol, transcript), kept above the demo remount. A conversation that
+  ends with the recap on opens its transcript. History's "Watch the demo" runs the scripted demo
+  through the real stage; any page change from the demo returns to the live app.
+- **Copy** is the design's: statuses "Listening", "Hearing you / them" ("Hearing" while the
+  speaker is not known yet), "Hearing them in <language>", "Translating", "Speaking to you /
+  them", "Hold to talk" with hands-free off; the five errors as problem cards (Try again /
+  Reconnect retry; "Start a new one" after the time limit goes back to Start); reconnecting keeps
+  the card with "The connection dropped. Picking up where you left off."; the detected language
+  as "They’re speaking X, so Vorp switched from Y."
+- **First launch**: Start opens "Let Vorp learn your voice" when nothing is enrolled and the
+  prompt was never answered; "Set up my voice" leads to enrolment, and done or "Not now" goes
+  straight into the conversation. The answer is kept (`vorp.enrolment.prompted.v1`), so it is
+  asked once; Settings › Your voice sets it up later.
+- **Enrolment** reads the controller: loading, unavailable ("Continue"), notEnrolled (Start
+  reading), recording (the owner taps "Next sentence" / "Done reading": the app has no word
+  tracking, so the design's word-by-word fill is shown as the whole sentence in ink, and "too
+  short" shows its line under the same sentence while it records again), computing, enrolled,
+  failed (Try again).
+- **Settings panel**: Voice, Tone, Cultural notes, Hands-free, Recap, Your voice (Set up / Redo,
+  Delete with Keep / Delete in place; deletes the owner's print only), Sound, Appearance.
+- **Stubbed out (code kept, not rendered)**: the ⇄ language swap on Start and in Talk
+  (`SHOW_SWAP = false` in `ui/dom/flags.ts`; `ui/dom/Swapper.tsx` and `liquid-gooey` kept), the
+  design's other logo directions (not ported). Not rendered by the app any more, kept in place
+  and unreferenced: `ConversationScreen.tsx`, `Settings.tsx`, `Sheet.tsx`, `LanguagePicker.tsx`,
+  `HistoryList.tsx`, `Transcript.tsx` in `features/conversation`, with the asks-to-repeat
+  toggle, the avatar and thinking-style pickers and the reduce-motion toggle (the
+  `motionPreference` store stays and is still honoured, with the system setting). The old
+  stage's live-transcript link and its "Next:" queue lines have no place in the design.
+- **Exceptions to the Look / Avoid list**, signed off with the design: gradient backgrounds (the
+  aurora: the ring's light, showing who speaks); colour opacities (light trails fade by alpha;
+  frosted glass is translucent); bordered containers (frost's 1 px inner light); dithering (the
+  aurora's per-pixel dither, against banding). The gold glow became the rainbow
+  (`colorful`) border beam; the bot avatar became the blobatar. Rubber band past bounds is
+  skipped (native scroll views already do it).
+- **Rendering rules kept from the design** (Chrome): never animate CSS `filter` on anything
+  holding canvases or backdrop-filter; pages fade and slide; text blurs with `text-shadow`;
+  animation fill-mode `backwards`; scroll containers padded for glass shadows. The distortion
+  wave pictures a frosted card on its `--dw-bg` solid (a vendor patch), or it flashes white.
+- **Fonts**: the DOM declares Geist as one family in two weights from the packaged files
+  (`ui/dom/fonts.ts`).
 
 ### Agent behaviours
 
@@ -535,6 +608,9 @@ Each behaviour is a row in a feature table that contributes prompt text and, whe
 tool declaration. Turning one off removes its row's contribution; no feature code branches on it.
 
 ### Interface
+
+The phase 3 design (below, "The design, ported") replaces the stage described in this section
+where they differ; the rest stands.
 
 - **Orb stage with captions** is the main screen: the centre stage, the last few utterances as
   caption cards below it, hold-to-talk buttons at the bottom, and a button at the top that opens
@@ -556,6 +632,7 @@ tool declaration. Turning one off removes its row's contribution; no feature cod
 
 ### Data and licence
 
-- **Persistence**: settings, conversation history and the owner's voiceprint (an embedding) on
-  the device only. No accounts, no cloud. Audio is never stored.
+- **Persistence**: settings, conversation history, the owner's voiceprint and Vorp's own voice
+  print per interpreter voice (embeddings), and whether the first-launch voice prompt was
+  answered, on the device only. No accounts, no cloud. Audio is never stored.
 - **Licence**: Apache-2.0, public repository.
