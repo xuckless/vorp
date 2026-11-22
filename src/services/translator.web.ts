@@ -18,7 +18,7 @@ import {
 import { INTERPRETER_MODEL, LIVE_API_VERSION, LIVE_AUDIO, LIVE_VAD } from '@/config/models';
 import { behaviourTools, NOTE_TOOL } from '@/config/behaviours';
 import { normaliseLanguage } from '@/config/languages';
-import { LANGUAGE_TOOL, interpreterPrompt, languageTool } from '@/config/prompts';
+import { LANGUAGE_TOOL, languageTool, systemPrompt } from '@/config/prompts';
 import { INTERPRETER_VOICE } from '@/config/voices';
 import type { SessionSettings, TurnDetection } from '@/core/session';
 
@@ -154,7 +154,7 @@ export function createTranslator(): Translator {
         model: INTERPRETER_MODEL,
         config: {
           responseModalities: [Modality.AUDIO],
-          systemInstruction: interpreterPrompt(people, settings),
+          systemInstruction: systemPrompt(people, settings),
           tools: [{ functionDeclarations: [languageTool, ...behaviourTools(settings.behaviours)] }],
           // One interpreter voice: the owner's choice.
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: people.owner.voice || INTERPRETER_VOICE } } },

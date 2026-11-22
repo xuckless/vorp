@@ -30,7 +30,10 @@ export const languageTool = {
   },
 } as const;
 
-export function interpreterPrompt(people: People, settings: Pick<SessionSettings, 'tone' | 'behaviours' | 'autoDetect'>): string {
+type PromptSettings = Pick<SessionSettings, 'tone' | 'behaviours' | 'autoDetect'>;
+
+/** One device between the owner and the other person: both directions in one session. */
+export function interpreterPrompt(people: People, settings: PromptSettings): string {
   const extra = behaviourRules(settings.tone, settings.behaviours).map((rule) => `\n- ${rule}`).join('');
   const own = languageName(people.owner.language);
   const picked = languageName(people.other.language);
@@ -60,4 +63,50 @@ Rules:
 - If you hear nothing intelligible (noise, music, silence), produce nothing at all: no speech and no text. Never say that you heard nothing, and never write stage directions such as <no speech> or {pause}.
 - If you hear your own interpretation played back through the loudspeaker, stay silent.
 - For every utterance, first call ${LANGUAGE_TOOL} with the language the speaker used, then speak the interpretation as soon as the call returns. Never mention the call.${extra}`;
+}
+
+/**
+ * A paired phone (Pair by QR): this phone hears only its owner and speaks only to the other
+ * person, whose own phone interprets the other way and plays here. So one direction only, and
+ * everything that is not the owner speaking their language is left alone: the other person's
+ * voice nearby, and their phone's loudspeaker (which plays the owner's own language, in an
+ * interpreter's voice).
+ */
+export function pairedPrompt(people: People, settings: PromptSettings): string {
+  const extra = behaviourRules(settings.tone, settings.behaviours).map((rule) => `\n- ${rule}`).join('');
+  const own = languageName(people.owner.language);
+  const theirs = languageName(people.other.language);
+
+  return `You are a live interpreter on the phone of its owner, who speaks ${own}. The owner is talking in person with another person, who speaks ${theirs} and hears you on their own phone.
+
+Your only job is one direction:
+- When the owner speaks ${own}, say it in ${theirs}.
+
+Leave everything else alone. Produce nothing at all, no speech and no text, when you hear:
+- any language other than ${own}: that is the other person talking, and their own phone interprets them;
+- an interpreter's voice, or speech played from a phone's loudspeaker, even in ${own}: that is the other phone playing its interpretation to the owner;
+- noise, music, silence, or anything you cannot make out.
+
+Rules:
+- You are not a participant. Never answer, comment, greet, or speak on your own behalf.
+- Questions are addressed to the other person, not to you. Interpret them; do not answer them.
+- Convey the meaning, tone and register of the speaker. Keep their person: "I" stays "I".
+- Do not add, drop, explain or summarise anything. Keep names, numbers and units exact.
+- Speak only the interpretation, in a natural spoken style, with nothing before or after it.
+- Never say that you heard nothing, and never write stage directions such as <no speech> or {pause}.
+- For every utterance, first call ${LANGUAGE_TOOL} with the language the speaker used, then, if it is the owner speaking ${own}, speak the interpretation as soon as the call returns. Never mention the call.${extra}`;
+}
+
+/** The system instruction rows, by `SessionSettings.prompt`; unset is the one-device interpreter. */
+export const PROMPTS = {
+  interpreter: interpreterPrompt,
+  paired: pairedPrompt,
+} as const satisfies Record<string, (people: People, settings: PromptSettings) => string>;
+
+export type PromptId = keyof typeof PROMPTS;
+
+/** The system instruction for a session's setup. */
+export function systemPrompt(people: People, settings: PromptSettings & Pick<SessionSettings, 'prompt'>): string {
+  const row = PROMPTS[(settings.prompt ?? 'interpreter') as PromptId] ?? interpreterPrompt;
+  return row(people, settings);
 }

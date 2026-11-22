@@ -2,7 +2,7 @@
 import { expect, test } from 'bun:test';
 
 import { DEFAULT_PEOPLE } from './conversation';
-import { interpreterPrompt, languageTool } from './prompts';
+import { interpreterPrompt, languageTool, pairedPrompt, systemPrompt } from './prompts';
 
 const plain = { tone: 'neutral', behaviours: [], autoDetect: true };
 
@@ -35,4 +35,18 @@ test('tone and behaviours add their rules, and only when chosen', () => {
   expect(none).not.toContain('add_note');
   expect(full).toContain('add_note');
   expect(full).toContain('formal, polite register');
+});
+
+test('a paired phone interprets only its owner, one way, and leaves the other phone alone', () => {
+  const prompt = pairedPrompt(DEFAULT_PEOPLE, plain);
+  expect(prompt).toContain('When the owner speaks English, say it in French.');
+  expect(prompt).toContain('any language other than English');
+  expect(prompt).toContain("phone's loudspeaker");
+  expect(prompt).toContain('Never answer');
+  expect(prompt).not.toContain('say it in English');
+});
+
+test('the prompt row comes from the settings; unset is the one-device interpreter', () => {
+  expect(systemPrompt(DEFAULT_PEOPLE, plain)).toBe(interpreterPrompt(DEFAULT_PEOPLE, plain));
+  expect(systemPrompt(DEFAULT_PEOPLE, { ...plain, prompt: 'paired' })).toBe(pairedPrompt(DEFAULT_PEOPLE, plain));
 });
