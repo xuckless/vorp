@@ -404,5 +404,109 @@ ${[...Array(7)].map((_, i) => `.vp-panel > .vp-row:nth-child(${i + 2}) { animati
    (the design's "Not now" link had none and could not be pressed). */
 .vp-enrol-actions > * { pointer-events: auto; }
 /* Vorp: a card whose speaker is not known yet carries no hue; the wave pictures it on the plain surface. */
-.vp-card.vp-frost:not(.you):not(.them) { --dw-bg: var(--surface-2); }
+.vp-card.unknown { --dw-bg: var(--surface-2); }
+
+/* Pair by QR, from the owner's design (src/vorp/style.ts, 22 November 2026). */
+
+.vp-start-actions { display: flex; flex-direction: column; gap: 10px; }
+.vp-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 10px; width: 100%; height: 52px; border: 0; border-radius: 18px; font-size: 16px; font-weight: 500; color: var(--ink); --frost: var(--frost-thin); transition: transform 120ms ${out}; }
+.vp-secondary:hover { --frost: var(--frost-press); }
+.vp-secondary:active { transform: scale(.97); }
+.vp-secondary svg { color: var(--mute); }
+.vp-pair, .vp-guest { text-align: center; }
+.vp-pair-main, .vp-guest-main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-bottom: 6vh; }
+.vp-pair h1, .vp-guest h1 { margin: 0; text-wrap: balance; }
+.vp-pair-lede { max-width: 360px; margin: 10px auto 22px; text-wrap: pretty; }
+.vp-qr-frame { position: relative; width: fit-content; margin: 0 auto; padding: 14px; border-radius: 30px; isolation: isolate; }
+.vp-pair-cancel { margin-top: 6px; min-height: 44px; }
+.vp-talk-row.solo { justify-content: center; }
+.vp-qr { position: relative; display: block; }
+.vp-qr svg { display: block; }
+.vp-qr-blob { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: grid; place-items: center; }
+.vp-qr-frame.expired .vp-qr { opacity: .12; transition: opacity 300ms ${inOut}; }
+.vp-qr-over { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; font-size: 19px; font-weight: 500; }
+.vp-primary-sm { width: auto; height: 48px; padding: 0 26px; font-size: 16px; }
+.vp-pair-expiry { margin-top: 16px; font-size: 14px; font-variant-numeric: tabular-nums; }
+.vp-pair-joined { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.vp-pair-joined h1 { margin-top: 10px; }
+.vp-pair-lang { font-size: 19px; }
+.vp-pair-lang strong { font-weight: 500; color: var(--them); }
+.vp-guest-bar { justify-content: center; }
+.vp-guest-hero { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; max-width: 420px; }
+.vp-guest-hero h1 { margin-top: 8px; font-size: clamp(26px, 7vw, 34px); }
+.vp-guest-body { max-width: 340px; text-wrap: pretty; }
+.vp-guest-pick { width: 100%; margin-top: 14px; padding: 4px 10px 4px 18px; border-radius: 20px; text-align: start; }
+.vp-row-fixed { color: var(--mute); }
+.vp-fixed-lang { padding: 0 14px; opacity: .7; }
+.vp-guest-actions { width: 100%; margin-top: 10px; }
+.vp-guest-note { font-size: 13.5px; margin-top: 10px; }
+/* The other phone, in the conversation header */
+.vp-peer { display: inline-flex; align-items: center; gap: 10px; text-align: end; font-size: 14px; font-weight: 500; line-height: 1.2; }
+.vp-peer small { display: block; font-size: 13px; font-weight: 400; }
+.vp-peer-signal { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; order: 2; }
+.vp-peer-signal i { width: 3px; border-radius: 2px; background: var(--them); transition: opacity 300ms; }
+.vp-peer-signal i:nth-child(1) { height: 6px; } .vp-peer-signal i:nth-child(2) { height: 10px; } .vp-peer-signal i:nth-child(3) { height: 14px; }
+.vp-peer.reconnecting .vp-peer-signal i { animation: vp-signal 1.2s ${inOut} infinite; }
+.vp-peer.reconnecting .vp-peer-signal i:nth-child(2) { animation-delay: .15s; } .vp-peer.reconnecting .vp-peer-signal i:nth-child(3) { animation-delay: .3s; }
+.vp-peer.ended .vp-peer-signal i { opacity: .25; background: var(--mute); }
+@keyframes vp-signal { 50% { opacity: .2; } }
+[data-reduced] .vp-peer-signal i { animation: none !important; }
+/* Paired conversation: a short feed, newest at the bottom, older ones fading off the top. */
+.vp-pair-talk .vp-stage { flex: none; }
+.vp-feed {
+  flex: 1; min-height: 0; width: 100%; max-width: 560px; margin: 0 auto; padding: 8px 2px 4px; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px;
+  overflow: hidden; -webkit-mask-image: linear-gradient(transparent, #000 56px); mask-image: linear-gradient(transparent, #000 56px);
+}
+.vp-feed-slot { display: flex; flex-direction: column; animation: vp-row-in 260ms ${out} backwards; }
+.vp-feed-card { max-width: 88%; padding: 12px 18px 14px; border-radius: 22px; text-align: left; transition: opacity 300ms ${inOut}, background-color 400ms ${inOut}; }
+.vp-feed-card.you { align-self: flex-start; --frost: var(--you-frost); border-bottom-left-radius: 8px; }
+.vp-feed-card.them { align-self: flex-end; --frost: var(--them-frost); border-bottom-right-radius: 8px; }
+.vp-feed-slot:has(.them) { align-items: flex-end; }
+.vp-feed-label { font-size: 12.5px; color: var(--mute); margin-bottom: 4px; }
+.vp-feed-label > span { display: inline-flex; align-items: center; gap: 6px; }
+.vp-feed-big { font-size: 19px; line-height: 1.32; font-weight: 500; }
+.vp-feed-small { font-size: 14.5px; margin-top: 4px; }
+/* Waiting its turn: untinted, greyed, its words dim until it plays. */
+.vp-feed-card.queued, .vp-feed-card.queuedLive { --frost: var(--frost-thin); opacity: .62; }
+.vp-feed-card.queued .vp-feed-big, .vp-feed-card.queuedLive .vp-feed-big { color: var(--mute); }
+.vp-feed-shelf { align-self: flex-end; width: 80%; margin-top: -6px; padding: 12px 18px 6px; border-radius: 0 0 18px 18px; background: var(--frost-thin); font-size: 12.5px; text-align: right; opacity: .7; }
+/* Playing: each word lights from grey to ink as it's spoken (a mask, not a fade). */
+.vp-lit { background: linear-gradient(90deg, var(--ink) var(--lit), var(--mute) var(--lit)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.vp-feed-progress { display: block; height: 3px; margin-top: 10px; border-radius: 2px; background: var(--frost-thin); overflow: hidden; }
+.vp-feed-progress i { display: block; height: 100%; background: var(--you); transform-origin: left; }
+.vp-heard { color: var(--ink); }
+.vp-heard svg { color: #5fd08a; animation: vp-pulse 640ms ${out}; }
+.vp-dots { display: inline-flex; gap: 3px; }
+.vp-dots i { width: 4px; height: 4px; border-radius: 2px; background: var(--them); animation: vp-signal 1s ${inOut} infinite; }
+.vp-dots i:nth-child(2) { animation-delay: .15s; } .vp-dots i:nth-child(3) { animation-delay: .3s; }
+.vp-feed-aside { text-align: center; }
+/* Join cues: the ring lights up with one ripple as the conversation goes live (and on "They're in"). */
+.vp-arrive .vp-ring { animation: vp-ignite 700ms ${out}; }
+@keyframes vp-ignite { from { transform: scale(.9); opacity: .4; } }
+.vp-ripple { position: relative; }
+.vp-ripple::after { content: ""; position: absolute; inset: -30%; border-radius: 50%; box-shadow: 0 0 0 2px var(--them); animation: vp-ripple 900ms ${out} forwards; pointer-events: none; }
+@keyframes vp-ripple { from { transform: scale(.6); opacity: .8; } to { transform: scale(1.6); opacity: 0; } }
+/* iPhone kept audio locked: one tap turns it on. */
+.vp-sound { display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px 18px; border: 0; border-radius: 20px; text-align: start; color: var(--ink); animation: vp-row-in 260ms ${out} backwards; }
+.vp-sound svg { width: 22px; height: 22px; flex: none; }
+.vp-sound strong { display: block; font-weight: 500; font-size: 17px; }
+.vp-sound small { display: block; font-size: 14px; margin-top: 2px; }
+/* Booth loop: saved, then a fresh code, counting down. */
+.vp-next { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 16px; font-size: 15px; }
+.vp-next strong { font-weight: 500; font-variant-numeric: tabular-nums; }
+.vp-next-ring { width: 26px; height: 26px; transform: rotate(-90deg); }
+.vp-next-ring circle { fill: none; stroke-width: 3; }
+.vp-next-ring .track { stroke: var(--frost-thin); }
+.vp-next-ring .fill { stroke: var(--ink); stroke-dasharray: 94.25; stroke-linecap: round; transition: stroke-dashoffset 1s linear; }
+.vp-end-actions { display: flex; justify-content: center; align-items: center; gap: 18px; margin-top: 14px; }
+/* Hands-free, speaker not known yet (the app learns it at the end of an utterance): an untinted card. */
+.vp-card.unknown { --frost: var(--frost-thin); border-radius: 22px; }
+
+/* Vorp: the unknown card tints and tightens the speaker's corner as the speaker resolves (the design's solo-mode note). */
+.vp-card.vp-frost { transition: background-color 400ms ${inOut}, border-radius 400ms ${inOut}; }
+/* Vorp: playback progress arrives four times a second (the contract's rate); the bar and the lit
+   words glide between reports instead of stepping. */
+@property --lit { syntax: '<percentage>'; inherits: false; initial-value: 0%; }
+.vp-lit { transition: --lit 260ms linear; }
+.vp-feed-progress i { transition: transform 260ms linear; }
 `;

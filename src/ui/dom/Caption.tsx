@@ -46,7 +46,7 @@ export function CaptionCard({
   reduced: boolean;
 }) {
   return (
-    <div className={`vp-card vp-frost ${who ?? ''}`}>
+    <div className={`vp-card vp-frost ${who ?? 'unknown'}`}>
       <Beam radius={22} dark={dark} active={speaking} />
       <DistortionWave
         className="vp-card-wave"
