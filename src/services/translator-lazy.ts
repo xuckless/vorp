@@ -3,7 +3,7 @@
 
 import type { Translator, TranslatorEvent } from './types';
 
-export function createLazyTranslator(load: () => Promise<{ createTranslator: () => Translator }> = () => import('./translator')): Translator {
+export function createLazyTranslator(load: () => Promise<{ createTranslator: () => Translator }>): Translator {
   const listeners = new Set<(e: TranslatorEvent) => void>();
   let real: Translator | null = null;
   let loading: Promise<Translator> | null = null;

@@ -24,7 +24,8 @@ import { Guest } from './Guest';
 // (moduleSuffixes), so the type is taken from where expo defines it.
 import type { DOMProps } from 'expo/build/dom/dom.types';
 
-const PairTalk = lazy(() => import('./PairTalk').then((m) => ({ default: m.PairTalk })));
+// The conversation view comes with the app's heavy chunk (see features/app/chunk.ts).
+const PairTalk = lazy(() => import('@/features/app/chunk').then((m) => ({ default: m.PairTalk })));
 
 const PAGE_CSS = 'html,body,#root{margin:0;padding:0;height:100%;overflow:hidden}';
 

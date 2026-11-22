@@ -1,8 +1,8 @@
-// The owner's app. Loaded as its own chunk, so the guest's page (/join) does not carry it.
+// The owner's app, from the app's one heavy chunk (see features/app/chunk.ts).
 
 import { lazy, Suspense } from 'react';
 
-const Vorp = lazy(() => import('@/features/conversation/Vorp').then((m) => ({ default: m.Vorp })));
+const Vorp = lazy(() => import('@/features/app/chunk').then((m) => ({ default: m.Vorp })));
 
 export default function Index() {
   return (

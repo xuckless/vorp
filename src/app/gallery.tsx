@@ -6,8 +6,8 @@ import { lazy, Suspense } from 'react';
 
 import type { SlotName } from '@/ui/slots';
 
-// Its own chunk: the effects it shows stay out of the guest's page.
-const GalleryScreen = lazy(() => import('@/features/gallery/GalleryScreen').then((m) => ({ default: m.GalleryScreen })));
+// From the app's heavy chunk (features/app/chunk.ts): the effects it shows stay out of the guest's page.
+const GalleryScreen = lazy(() => import('@/features/app/chunk').then((m) => ({ default: m.GalleryScreen })));
 
 export default function Gallery() {
   const { only } = useLocalSearchParams<{ only?: SlotName }>();

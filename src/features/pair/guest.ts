@@ -10,7 +10,8 @@ import { createPairRuntime, type PairRuntime } from './runtime';
 
 export function createGuestPairing(code: string, language: string, onLeave: (language: string) => void): PairRuntime {
   return createPairRuntime(
-    createGuestPairServices(GUEST_VOICE_FILTER),
+    // The translator comes with the app's heavy chunk, when the session first connects.
+    createGuestPairServices(GUEST_VOICE_FILTER, () => import('@/features/app/chunk')),
     'guest',
     // The host's interpreter voice is the host's choice, unknown here; the guest learns it afresh.
     { language, voice: GUEST_VOICE, peerVoice: INTERPRETER_VOICE, settings: pairedSettings(DEFAULT_SETTINGS) },

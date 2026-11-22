@@ -11,6 +11,7 @@ import { createVoiceEmbedder } from './voice-embedder';
 import { createWakeLock } from './wake-lock';
 
 export { createDemoServices } from './demo';
+export { createTranslator };
 export { createStorage } from './storage';
 export type { AudioInput, KeyValueStorage, PairServices, Services, VoiceEmbedder } from './types';
 
