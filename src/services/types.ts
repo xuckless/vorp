@@ -26,7 +26,9 @@ export interface AudioInput {
 
 export type AudioOutputEvent =
   | { type: 'started'; utteranceId: UtteranceId }
-  | { type: 'finished'; utteranceId: UtteranceId };
+  | { type: 'finished'; utteranceId: UtteranceId }
+  /** Audio was queued but the platform keeps playback locked (iPhone Safari without a tap). */
+  | { type: 'blocked' };
 
 /** Gapless playback of 24 kHz mono 16-bit PCM, tagged by utterance. */
 export interface AudioOutput {
@@ -40,6 +42,8 @@ export interface AudioOutput {
   stop(): void;
   /** Current output level, 0..1, for the voice visualiser. */
   level(): number;
+  /** How much of an utterance's audio queued so far has played, 0..1 (0 when unknown). */
+  progress(utteranceId: UtteranceId): number;
   onEvent(listener: (e: AudioOutputEvent) => void): Unsubscribe;
 }
 

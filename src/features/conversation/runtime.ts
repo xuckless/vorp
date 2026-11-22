@@ -146,13 +146,10 @@ export function createRuntime(
   translator.onEvent((e) =>
     dispatch(e.type === 'closed' ? { type: 'connectionLost', kind: e.kind, message: e.reason } : e),
   );
-  output.onEvent((e) =>
-    dispatch(
-      e.type === 'started'
-        ? { type: 'playbackStarted', utteranceId: e.utteranceId }
-        : { type: 'playbackFinished', utteranceId: e.utteranceId },
-    ),
-  );
+  output.onEvent((e) => {
+    if (e.type === 'started') dispatch({ type: 'playbackStarted', utteranceId: e.utteranceId });
+    else if (e.type === 'finished') dispatch({ type: 'playbackFinished', utteranceId: e.utteranceId });
+  });
 
   return {
     store,

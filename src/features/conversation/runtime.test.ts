@@ -51,6 +51,7 @@ function fakes(failures: { input?: Error; connect?: Error } = {}, voice: VoiceEm
     finish: (id) => void calls.push(`output.finish ${id}`),
     stop: () => void calls.push('output.stop'),
     level: () => 0,
+    progress: () => 0,
     onEvent: (l) => {
       outputEvent = l;
       return () => {};
