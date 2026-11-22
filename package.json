@@ -16,6 +16,7 @@
     "token-server": "zig build --build-file server/build.zig run",
     "test:server": "cd server && zig build test",
     "e2e:live": "scripts/e2e/live.sh",
+    "e2e:pair": "bun scripts/e2e/pair.ts",
     "voiceprint:assets": "bun scripts/voiceprint/assets.ts",
     "smoke:voiceprint": "bun scripts/voiceprint/smoke.ts"
   },
