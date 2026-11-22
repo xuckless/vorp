@@ -30,6 +30,8 @@ export type Utterance = {
   source: string;
   /** What the interpreter said (output transcript). */
   translation: string;
+  /** A caption-only note from the interpreter (an idiom, a cultural reference). Never spoken. */
+  note?: string;
   error?: string;
 };
 
@@ -64,6 +66,9 @@ export type SessionSettings = {
   pauseMicWhileSpeaking: boolean;
   /** Share of a captured transcript's words found in the spoken translation that marks it an echo, 0..1. */
   echoMatch: number;
+  /** Tone row id and behaviour row ids from the config tables. Carried to the translator; the reducer does not read them. */
+  tone: string;
+  behaviours: readonly string[];
 };
 
 export type SessionErrorKind = 'micDenied' | 'mic' | 'token' | 'socket' | 'timeLimit';
@@ -93,8 +98,8 @@ export type Pcm = Int16Array;
 export type SessionEvent =
   | { type: 'start' }
   | { type: 'stop' }
-  /** Change one person's setup. Only between sessions: a live session was opened for the old one. */
-  | { type: 'setParticipant'; participant: Participant }
+  /** Replace the setup. Only between sessions: a live session was opened for the old one. */
+  | { type: 'configure'; participants: Participant[]; settings: SessionSettings }
   | { type: 'connected' }
   | { type: 'connectFailed'; kind: 'token' | 'socket'; message: string }
   | { type: 'connectionLost'; kind: 'socket' | 'timeLimit'; message: string }
@@ -107,6 +112,8 @@ export type SessionEvent =
   | { type: 'outputTranscript'; text: string; language?: string }
   /** The interpreter reports the language of the utterance it is answering. */
   | { type: 'sourceLanguage'; language: string }
+  /** A caption-only note on the utterance being answered. */
+  | { type: 'note'; text: string }
   | { type: 'outputAudio'; pcm: Pcm }
   | { type: 'interrupted' }
   | { type: 'turnComplete' }
@@ -128,7 +135,9 @@ export type Effect =
   | { type: 'endTurn' }
   | { type: 'enqueuePlayback'; utteranceId: UtteranceId; pcm: Pcm }
   | { type: 'finishPlayback'; utteranceId: UtteranceId }
-  | { type: 'stopPlayback' };
+  | { type: 'stopPlayback' }
+  /** A conversation in which something was heard has ended; keep it. */
+  | { type: 'archive'; participants: Participant[]; utterances: Utterance[] };
 
 export type Transition = [Session, Effect[]];
 
@@ -265,16 +274,22 @@ function step(s: Session, e: SessionEvent): Transition {
       if (s.connection === 'connecting' || s.connection === 'open' || s.connection === 'reconnecting') return [s, []];
       // openAudio runs inside the user gesture that sent 'start', which browsers require.
       return [
-        { ...s, connection: 'connecting', error: undefined },
+        // A new conversation: the last one was archived when it stopped.
+        { ...s, connection: 'connecting', error: undefined, utterances: s.connection === 'idle' ? [] : s.utterances, awaitingResponse: s.connection === 'idle' ? [] : s.awaitingResponse },
         [{ type: 'openAudio' }, { type: 'connect', participants: s.participants, settings: s.settings }],
       ];
 
-    case 'setParticipant':
+    case 'configure':
       if (s.connection !== 'idle' && s.connection !== 'failed') return [s, []];
-      return [{ ...s, participants: s.participants.map((p) => (p.id === e.participant.id ? e.participant : p)) }, []];
+      return [{ ...s, participants: e.participants, settings: e.settings }, []];
 
-    case 'stop':
-      return [{ ...failInFlight(s, 'stopped'), connection: 'idle' }, RELEASE];
+    case 'stop': {
+      if (s.connection === 'idle') return [s, []];
+      const ended = { ...failInFlight(s, 'stopped'), connection: 'idle' as const };
+      const heard = ended.utterances.filter((u) => u.source !== '');
+      const archive: Effect[] = heard.length > 0 ? [{ type: 'archive', participants: s.participants, utterances: heard }] : [];
+      return [ended, [...RELEASE, ...archive]];
+    }
 
     case 'connected':
       if (s.connection !== 'connecting' && s.connection !== 'reconnecting') return [s, []];
@@ -379,6 +394,12 @@ function step(s: Session, e: SessionEvent): Transition {
         ...routeByOutput(v, s.participants, e.language),
       }));
       return [next, []];
+    }
+
+    case 'note': {
+      const u = find(s, headId(s));
+      if (u === undefined || u.status === 'failed') return [s, []];
+      return [patch(s, u.id, (v) => ({ ...v, note: e.text })), []];
     }
 
     case 'sourceLanguage': {

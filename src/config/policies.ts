@@ -3,6 +3,8 @@
 
 import type { OverlapPolicy, SessionSettings, TurnDetection } from '@/core/session';
 
+import { DEFAULT_BEHAVIOURS, DEFAULT_TONE } from './behaviours';
+
 /**
  * What new speech does to a translation being spoken. 'queue': Vorp finishes the current
  * translation while capturing the next, then speaks it in order. Ducking and barge-in are
@@ -32,4 +34,6 @@ export const DEFAULT_SETTINGS: SessionSettings = {
   overlap: overlap('queue'),
   pauseMicWhileSpeaking: FLAGS.pauseMicWhileSpeaking,
   echoMatch: ECHO_MATCH,
+  tone: DEFAULT_TONE,
+  behaviours: DEFAULT_BEHAVIOURS,
 };

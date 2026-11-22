@@ -9,7 +9,9 @@ pub const Config = struct {
     gemini_api_key: anole.Secret,
     /// Where tokens are issued. Only a test changes it.
     gemini_auth_tokens_url: []const u8 = "https://generativelanguage.googleapis.com/v1beta/auth_tokens",
-    /// TOKEN_RATE_LIMIT: tokens a client address may ask for per minute.
+    /// Where recaps are written. Only a test changes it.
+    gemini_generate_url: []const u8 = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+    /// TOKEN_RATE_LIMIT: tokens (and recaps) a client address may ask for per minute.
     token_rate_limit: u32 = 20,
     /// CORS_ORIGIN: another origin allowed to call /token. Production serves the web build
     /// from this origin, so it needs none.

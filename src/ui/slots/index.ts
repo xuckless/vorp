@@ -10,6 +10,7 @@ export {
   implementationIds,
   MessageSurface,
   SLOT_REGISTRY,
+  slotChoices,
   ThinkingIndicator,
   useSlotChoices,
   VoiceVisualiser,

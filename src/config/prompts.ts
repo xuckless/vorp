@@ -2,8 +2,9 @@
 // The Live API takes the system instruction only at session setup, so a change of
 // participants means a new session.
 
-import type { Participant } from '@/core/session';
+import type { Participant, SessionSettings } from '@/core/session';
 
+import { behaviourRules } from './behaviours';
 import { languageName } from './languages';
 
 /**
@@ -26,7 +27,8 @@ export function languageTool(participants: readonly Participant[]) {
   };
 }
 
-export function interpreterPrompt(participants: readonly Participant[]): string {
+export function interpreterPrompt(participants: readonly Participant[], settings: Pick<SessionSettings, 'tone' | 'behaviours'>): string {
+  const extra = behaviourRules(settings.tone, settings.behaviours).map((rule) => `\n- ${rule}`).join('');
   const people = participants.map((p) => `- ${p.name} speaks ${languageName(p.language)}.`).join('\n');
   const languages = [...new Set(participants.map((p) => languageName(p.language)))];
   const directions = languages
@@ -50,7 +52,7 @@ Rules:
 - Convey the meaning, tone and register of the speaker. Keep their person: "I" stays "I".
 - Do not add, drop, explain or summarise anything. Keep names, numbers and units exact.
 - Speak only the interpretation, in a natural spoken style, with nothing before or after it.
-- If you hear nothing intelligible, stay silent.
+- If you hear nothing intelligible (noise, music, silence), produce nothing at all: no speech and no text. Never say that you heard nothing.
 - If you hear your own interpretation played back through the loudspeaker, stay silent.
-- For every utterance, first call ${LANGUAGE_TOOL} with the language the speaker used, then speak the interpretation as soon as the call returns. Never mention the call.`;
+- For every utterance, first call ${LANGUAGE_TOOL} with the language the speaker used, then speak the interpretation as soon as the call returns. Never mention the call.${extra}`;
 }

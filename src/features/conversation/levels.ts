@@ -3,8 +3,8 @@
 
 import type { Services } from '@/services';
 
-/** Speech sits well below full scale; this brings a normal voice to about 0.6. */
-const MIC_GAIN = 6;
+/** Speech sits well below full scale; this brings a normal voice to about 0.5. */
+const MIC_GAIN = 5;
 
 export type Levels = { mic: () => number; out: () => number; dispose: () => void };
 
@@ -13,7 +13,8 @@ export function createLevels({ input, output }: Services): Levels {
   const off = input.onChunk((pcm) => {
     let sum = 0;
     for (let i = 0; i < pcm.length; i++) sum += pcm[i] * pcm[i];
-    mic = Math.min(1, (Math.sqrt(sum / pcm.length) / 0x8000) * MIC_GAIN);
+    // A soft ceiling: a loud voice approaches the top instead of pinning the ring at it.
+    mic = Math.tanh((Math.sqrt(sum / pcm.length) / 0x8000) * MIC_GAIN);
   });
   return { mic: () => mic, out: () => output.level(), dispose: off };
 }

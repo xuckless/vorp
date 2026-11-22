@@ -16,6 +16,7 @@ import {
 } from '@google/genai';
 
 import { INTERPRETER_MODEL, LIVE_API_VERSION, LIVE_AUDIO, LIVE_VAD } from '@/config/models';
+import { behaviourTools, NOTE_TOOL } from '@/config/behaviours';
 import { LANGUAGE_TOOL, interpreterPrompt, languageTool } from '@/config/prompts';
 import { INTERPRETER_VOICE } from '@/config/voices';
 import type { SessionSettings, TurnDetection } from '@/core/session';
@@ -74,6 +75,8 @@ export function createTranslator(): Translator {
       for (const call of calls) {
         const language = call.name === LANGUAGE_TOOL ? call.args?.language : undefined;
         if (typeof language === 'string') emit({ type: 'sourceLanguage', language });
+        const note = call.name === NOTE_TOOL ? call.args?.note : undefined;
+        if (typeof note === 'string' && note.trim() !== '') emit({ type: 'note', text: note.trim() });
       }
       // The model speaks the interpretation once the call returns. The call ends a model turn
       // of its own, whose turnComplete is not the end of the reply.
@@ -138,9 +141,10 @@ export function createTranslator(): Translator {
         model: INTERPRETER_MODEL,
         config: {
           responseModalities: [Modality.AUDIO],
-          systemInstruction: interpreterPrompt(participants),
-          tools: [{ functionDeclarations: [languageTool(participants)] }],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: INTERPRETER_VOICE } } },
+          systemInstruction: interpreterPrompt(participants, settings),
+          tools: [{ functionDeclarations: [languageTool(participants), ...behaviourTools(settings.behaviours)] }],
+          // One interpreter voice: the first participant's.
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: participants[0]?.voice ?? INTERPRETER_VOICE } } },
           // The participants' languages as hints; the transcript reports the detected one.
           inputAudioTranscription: { languageCodes: [...new Set(participants.map((p) => p.language))] },
           outputAudioTranscription: {},

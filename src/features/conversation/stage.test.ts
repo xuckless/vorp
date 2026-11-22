@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test';
 
 import { initialSession, transition, type Participant, type Session, type SessionEvent, type SessionSettings } from '@/core/session';
 
-import { captions, stageOf } from './stage';
+import { captions, spotlight, stageOf } from './stage';
 
 const people: Participant[] = [
   { id: 'a', name: 'Alex', language: 'en', voice: 'Charon' },
@@ -14,6 +14,8 @@ const settings: SessionSettings = {
   overlap: { id: 'queue', speechDuringPlayback: 'queue', holdSeconds: 20 },
   pauseMicWhileSpeaking: false,
   echoMatch: 0.6,
+  tone: 'neutral',
+  behaviours: [],
 };
 const run = (events: SessionEvent[]): Session => events.reduce((s, e) => transition(s, e)[0], initialSession(people, settings));
 const open: SessionEvent[] = [{ type: 'start' }, { type: 'connected' }];
@@ -39,4 +41,17 @@ test('captions leave out what was never heard', () => {
   const s = run([...open, { type: 'speechStarted' }]);
   expect(captions(s)).toEqual([]);
   expect(captions(run([...open, { type: 'speechStarted' }, { type: 'inputTranscript', text: 'Hi' }]))).toHaveLength(1);
+});
+
+test('a placeholder answer to noise is not a caption', () => {
+  const s = run([...open, { type: 'speechStarted' }, { type: 'inputTranscript', text: 'mm' }, { type: 'speechEnded' }, { type: 'outputTranscript', text: '<no speech detected>' }]);
+  expect(captions(s)).toEqual([]);
+});
+
+test('the spotlight is the line being spoken, with the next ones waiting behind it', () => {
+  const first: SessionEvent[] = [...open, { type: 'speechStarted' }, { type: 'inputTranscript', text: 'One' }, { type: 'speechEnded' }, { type: 'outputAudio', pcm }, { type: 'playbackStarted', utteranceId: 'u1' }];
+  const s = run([...first, { type: 'speechStarted' }, { type: 'inputTranscript', text: 'Two' }]);
+  const shown = spotlight(s);
+  expect(shown.card?.source).toBe('One');
+  expect(shown.waiting.map((u) => u.source)).toEqual(['Two']);
 });

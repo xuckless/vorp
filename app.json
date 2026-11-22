@@ -8,7 +8,7 @@
     "scheme": "vorp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon",
+      "icon": "./assets/images/icon.png",
       "bundleIdentifier": "dev.xuckless.vorp",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Vorp listens to the conversation so it can translate it."
@@ -41,7 +41,8 @@
           "imageWidth": 76
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,

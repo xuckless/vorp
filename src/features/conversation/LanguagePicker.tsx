@@ -7,11 +7,10 @@ import { LANGUAGES } from '@/config/languages';
 import { Layer, Press, transition } from '@/ui/primitives';
 import { motion, staggerDelay, timing, TOUCH_TARGET, useReducedMotion, useTheme } from '@/ui/tokens';
 
+import { COLUMN_WIDTH } from './Sheet';
+
 /** Rows that enter one after another; the rest are below the fold and arrive with the last. */
 const STAGGERED_ROWS = 8;
-
-/** The stage's column, which the picker lines up with. */
-export const COLUMN_WIDTH = 720;
 
 export function LanguagePicker({
   open,

@@ -1,3 +1,3 @@
-import { ConversationScreen } from '@/features/conversation/ConversationScreen';
+import { Vorp } from '@/features/conversation/Vorp';
 
-export default ConversationScreen;
+export default Vorp;

@@ -11,6 +11,7 @@ import {
   type SessionErrorKind,
   type SessionEvent,
   type SessionSettings,
+  type Utterance,
 } from '@/core/session';
 import { LIVE_AUDIO } from '@/config/models';
 import { createStore, type Store } from '@/core/store';
@@ -30,7 +31,13 @@ function kindOf<K extends SessionErrorKind>(err: unknown, allowed: readonly K[],
   return err instanceof ServiceError && (allowed as readonly SessionErrorKind[]).includes(err.kind) ? (err.kind as K) : fallback;
 }
 
-export function createRuntime(services: Services, participants: Participant[], settings: SessionSettings): Runtime {
+export function createRuntime(
+  services: Services,
+  participants: Participant[],
+  settings: SessionSettings,
+  /** Called with each conversation that ends with something heard in it. */
+  onArchive: (participants: Participant[], utterances: Utterance[]) => void = () => {},
+): Runtime {
   const { input, output, translator } = services;
   const store = createStore(initialSession(participants, settings));
   /** The live microphone-to-translator pipe while the reducer says the microphone is open. */
@@ -105,6 +112,9 @@ export function createRuntime(services: Services, participants: Participant[], s
         return;
       case 'stopPlayback':
         output.stop();
+        return;
+      case 'archive':
+        onArchive(effect.participants, effect.utterances);
         return;
     }
   }

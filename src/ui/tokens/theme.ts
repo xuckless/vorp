@@ -4,7 +4,10 @@
 // (token names and the light / dark split) is what the rest of the app relies on; replace the
 // numbers and colours here and nowhere else.
 
+import { useSyncExternalStore } from 'react';
 import { useColorScheme } from 'react-native';
+
+import { createStore } from '@/core/store';
 
 export type ColorScheme = 'light' | 'dark';
 
@@ -89,7 +92,14 @@ export function themeFor(scheme: ColorScheme): Theme {
   return { scheme, color: palettes[scheme], type, space, radius };
 }
 
-/** The theme for the current colour scheme. Dark when the system does not say. */
+/** `system` follows the device; the others override it. Settings writes it; nothing else does. */
+export type ThemePreference = 'system' | ColorScheme;
+
+export const themePreference = createStore<ThemePreference>('system');
+
+/** The theme in use: the user's choice, else the system's. Dark when the system does not say. */
 export function useTheme(): Theme {
-  return themeFor(useColorScheme() === 'light' ? 'light' : 'dark');
+  const preference = useSyncExternalStore(themePreference.subscribe, themePreference.get, themePreference.get);
+  const system = useColorScheme() === 'light' ? 'light' : 'dark';
+  return themeFor(preference === 'system' ? system : preference);
 }

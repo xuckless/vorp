@@ -22,7 +22,7 @@ const people: Participant[] = [
 ];
 
 const queue = { id: 'queue', speechDuringPlayback: 'queue', holdSeconds: 20 } as const;
-const handsFree: SessionSettings = { detection: 'auto', overlap: queue, pauseMicWhileSpeaking: false, echoMatch: 0.6 };
+const handsFree: SessionSettings = { detection: 'auto', overlap: queue, pauseMicWhileSpeaking: false, echoMatch: 0.6, tone: 'neutral', behaviours: [] };
 const manual: SessionSettings = { ...handsFree, detection: 'manual' };
 
 const pcm = new Int16Array([1, 2, 3]);
@@ -521,12 +521,20 @@ describe('pauseMicWhileSpeaking', () => {
   });
 });
 
-test('a participant changes between sessions, not during one', () => {
-  const french = freshHandsFree().participants[1];
-  const spanish = { ...french, language: 'es', name: 'Spanish speaker' };
-  const [idle] = transition(freshHandsFree(), { type: 'setParticipant', participant: spanish });
+test('the setup changes between sessions, not during one', () => {
+  const spanish = people.map((p, i) => (i === 1 ? { ...p, language: 'es' } : p));
+  const [idle] = transition(freshHandsFree(), { type: 'configure', participants: spanish, settings: manual });
   expect(idle.participants[1].language).toBe('es');
+  expect(idle.settings.detection).toBe('manual');
   const [connecting] = transition(freshHandsFree(), { type: 'start' });
-  const [same] = transition(connecting, { type: 'setParticipant', participant: spanish });
-  expect(same.participants[1].language).toBe(french.language);
+  const [same] = transition(connecting, { type: 'configure', participants: spanish, settings: manual });
+  expect(same.participants).toBe(connecting.participants);
+});
+
+test('a note lands on the utterance being answered', () => {
+  const [s] = run(
+    [{ type: 'start' }, { type: 'connected' }, { type: 'speechStarted' }, { type: 'inputTranscript', text: 'A piece of cake' }, { type: 'speechEnded' }, { type: 'note', text: 'Idiom: very easy' }],
+    freshHandsFree(),
+  );
+  expect(s.utterances[0].note).toBe('Idiom: very easy');
 });

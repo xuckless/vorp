@@ -68,7 +68,7 @@ function fakes(failures: { input?: Error; connect?: Error } = {}) {
       return () => {};
     },
   };
-  const services: Services = { input, output, translator };
+  const services: Services = { input, output, translator, recap: { summarise: async () => ({}) } };
   return {
     services,
     calls,

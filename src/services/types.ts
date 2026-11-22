@@ -51,6 +51,8 @@ export type TranslatorEvent =
   | { type: 'outputTranscript'; text: string; language?: string }
   /** The model's own report of the language it is interpreting from (BCP-47, a participant's). */
   | { type: 'sourceLanguage'; language: string }
+  /** A caption-only note on the utterance being interpreted. */
+  | { type: 'note'; text: string }
   | { type: 'outputAudio'; pcm: Pcm }
   | { type: 'interrupted' }
   | { type: 'turnComplete' }
@@ -74,8 +76,21 @@ export interface Translator {
   onEvent(listener: (e: TranslatorEvent) => void): Unsubscribe;
 }
 
+/** Writes the recap of a finished conversation, once per language. */
+export interface Recap {
+  /** `languages` are names ("English"); `lines` the conversation, oldest first. Keyed by language name. */
+  summarise(languages: readonly string[], lines: readonly string[]): Promise<Record<string, string>>;
+}
+
+/** String values by key, on the device only. */
+export interface KeyValueStorage {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string): Promise<void>;
+}
+
 export type Services = {
   input: AudioInput;
   output: AudioOutput;
   translator: Translator;
+  recap: Recap;
 };

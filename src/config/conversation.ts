@@ -15,3 +15,12 @@ export const DEFAULT_PARTICIPANTS: Participant[] = [
  * server also serves the web build); set EXPO_PUBLIC_TOKEN_URL in development.
  */
 export const TOKEN_URL = process.env.EXPO_PUBLIC_TOKEN_URL ?? '/token';
+
+/** The same server writes recaps. */
+export const RECAP_URL = TOKEN_URL.replace(/token$/, 'recap');
+
+/** The language a newly added person starts with: the first of these nobody speaks yet. */
+export const NEXT_LANGUAGES = ['es', 'en', 'fr', 'de'] as const;
+
+/** Two people must work flawlessly; three is best effort. */
+export const PEOPLE_COUNTS = [2, 3] as const;

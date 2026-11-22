@@ -13,9 +13,10 @@ const Fixture = struct {
         const cfg: Config = .{
             .gemini_api_key = .init("test-key"),
             .gemini_auth_tokens_url = "http://127.0.0.1:1/auth_tokens",
+            .gemini_generate_url = "http://127.0.0.1:1/generate",
             .token_rate_limit = token_rate_limit,
         };
-        self.state = .{ .api_key = cfg.gemini_api_key, .auth_tokens_url = cfg.gemini_auth_tokens_url };
+        self.state = .{ .api_key = cfg.gemini_api_key, .auth_tokens_url = cfg.gemini_auth_tokens_url, .generate_url = cfg.gemini_generate_url };
         self.app = try anole.Server(app_main.App).init(std.testing.allocator, .{ .executors = .exact(1), .errors = .json }, &self.state);
         self.limiter = .init(std.testing.allocator, self.app.io(), .{});
         try app_main.routes(&self.app, cfg, self.limiter.limiter());
@@ -79,4 +80,22 @@ test "POST /token is rate limited per client" {
     var limited = try t.post("/token", .{});
     defer limited.deinit();
     try limited.expectStatus(.too_many_requests);
+}
+
+test "POST /recap refuses an empty conversation and is a 502 when Gemini cannot be reached" {
+    var f: Fixture = undefined;
+    try f.start(20);
+    defer f.stop();
+    var t = try anole.testing.client(&f.app);
+    defer t.deinit();
+
+    const none: []const []const u8 = &.{};
+    var empty = try t.post("/recap", .{ .json = .{ .languages = .{"English"}, .lines = none } });
+    defer empty.deinit();
+    try empty.expectStatus(.bad_request);
+
+    var res = try t.post("/recap", .{ .json = .{ .languages = .{ "English", "French" }, .lines = .{"Hello. / Bonjour."} } });
+    defer res.deinit();
+    try res.expectStatus(.bad_gateway);
+    try std.testing.expect(std.mem.indexOf(u8, res.body, "test-key") == null);
 }

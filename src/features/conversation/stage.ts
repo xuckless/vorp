@@ -33,7 +33,27 @@ export function stageOf(s: Session): Stage {
   return { phase: 'listening', direction: 0 };
 }
 
+/**
+ * For noise the model sometimes answers with a stage direction such as "<no speech detected>"
+ * instead of staying silent (seen live, 21 November 2026). That is not a translation.
+ */
+const PLACEHOLDER = /^\s*<[^>]*>\s*$/;
+
 /** The utterances worth showing as captions, oldest first: heard, and not dropped as echo or noise. */
 export function captions(s: Session): Utterance[] {
-  return s.utterances.filter((u) => u.source !== '' && u.status !== 'failed');
+  return s.utterances.filter((u) => u.source !== '' && u.status !== 'failed' && !PLACEHOLDER.test(u.translation));
+}
+
+const WAITING: readonly Utterance['status'][] = ['capturing', 'translating', 'queued'];
+
+/**
+ * The captions on the stage: the one in the light (being spoken, else the newest), the line
+ * before it, and the ones still waiting their turn, in the order they will be spoken.
+ */
+export function spotlight(s: Session): { card?: Utterance; earlier?: Utterance; waiting: Utterance[] } {
+  const all = captions(s);
+  const card = all.find((u) => u.status === 'speaking') ?? all[all.length - 1];
+  if (!card) return { waiting: [] };
+  const at = all.indexOf(card);
+  return { card, earlier: all[at - 1], waiting: all.slice(at + 1).filter((u) => WAITING.includes(u.status)) };
 }

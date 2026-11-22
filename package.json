@@ -20,7 +20,10 @@
   "dependencies": {
     "@expo-google-fonts/geist": "^0.4.2",
     "@google/genai": "^3.6.1",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~58.0.26",
+    "expo-asset": "~58.0.21",
+    "expo-clipboard": "~58.0.4",
     "expo-constants": "~58.0.16",
     "expo-font": "~58.0.12",
     "expo-linking": "~58.0.17",
