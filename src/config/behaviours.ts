@@ -42,7 +42,16 @@ export const BEHAVIOURS: readonly Behaviour[] = [
     tool: {
       name: NOTE_TOOL,
       description: 'Attach a short written note to the caption of the utterance being interpreted. It is shown, never spoken.',
-      parametersJsonSchema: { type: 'object', properties: { note: { type: 'string' } }, required: ['note'] },
+      parametersJsonSchema: {
+        type: 'object',
+        properties: {
+          note: {
+            type: 'string',
+            description: 'One short sentence written strictly in the target language (the language you are interpreting into, not the source language), explaining the idiom or cultural reference and quoting the original phrase if helpful.',
+          },
+        },
+        required: ['note'],
+      },
     },
   },
   {
