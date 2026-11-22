@@ -180,7 +180,7 @@ product landing page. The host starts pairing from a second button on the Start 
 session designs the screens.
 
 - [x] Design and implementation questions answered by the owner
-- [ ] Server: rooms on the token server (WebSocket relay, one-time codes, guest tokens)
+- [x] Server: rooms on the token server (WebSocket relay, one-time codes, guest tokens)
 - [ ] Host: start a paired session from Start and show its QR code
 - [ ] Guest: scan, pick your native language, Join
 - [ ] Live translation across the two devices

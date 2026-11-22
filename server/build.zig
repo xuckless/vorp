@@ -10,7 +10,9 @@ pub fn build(b: *std.Build) void {
     });
 
     // `zig build test`: src/main_test.zig serves the same routes in memory.
-    const tests = b.addTest(.{ .root_module = b.createModule(.{
+    // `zig build test -Dtest-filter="pairing"`: only the tests whose names contain it.
+    const filters: []const []const u8 = if (b.option([]const u8, "test-filter", "Run only the tests whose names contain this")) |f| &.{f} else &.{};
+    const tests = b.addTest(.{ .filters = filters, .root_module = b.createModule(.{
         .root_source_file = b.path("src/main_test.zig"),
         .target = app.exe.root_module.resolved_target,
         .optimize = app.exe.root_module.optimize,

@@ -2,6 +2,8 @@
 //! sent to a client) for a short-lived, single-use Live API token. With WEB_DIR set it also
 //! serves the exported web app, so the demo is one origin. `POST /recap` summarises a finished
 //! conversation in each of its languages with a text model, the key again staying here.
+//! `POST /rooms` and `WS /rooms/:code` pair two phones by QR code and relay between them
+//! (src/pairing.zig, docs/pairing-protocol.md).
 //!
 //!   bun run token-server        # from the repository root; reads .env there
 //!   curl -X POST localhost:8787/token
@@ -9,10 +11,12 @@
 //!
 //! The token uses Google's defaults: one session (`uses: 1`), a 60 second window to open it,
 //! and 30 minutes of life. Everything here is Anole's own: typed config, the rate limiter,
-//! health routes, CORS, static files and the outbound client.
+//! health routes, CORS, static files, the outbound client and WebSocket rooms.
 const std = @import("std");
 const anole = @import("anole");
 pub const Config = @import("config.zig").Config;
+pub const pairing = @import("pairing.zig");
+pub const rooms = @import("rooms.zig");
 
 pub const std_options = anole.std_options;
 pub const panic = anole.panic;
@@ -22,6 +26,8 @@ pub const App = struct {
     api_key: anole.Secret,
     auth_tokens_url: []const u8,
     generate_url: []const u8,
+    /// Pairing two phones: the rooms and their relay (src/pairing.zig).
+    pairing: pairing.Pairing,
     /// Open when the web build is served; unknown paths then get its index.html.
     web: ?std.Io.Dir = null,
 
@@ -142,12 +148,30 @@ pub fn routes(app: *anole.Server(App), cfg: Config, limiter: anole.ratelimit.Lim
     limited.post("/token", token);
     limited.post("/recap", recap);
 
+    // Pairing: a room per QR code, then a socket each for the host and the guest. Both count
+    // against one per-client limit. Any page may open the socket: it carries no cookies, and
+    // the code (and the host's key) is what admits it.
+    const pairing_limited = app.with(.{anole.ratelimit.Middleware.init(limiter, .{ .limit = cfg.room_rate_limit })});
+    pairing_limited.post("/rooms", pairing.create);
+    pairing_limited.wsCallbacksWith("/rooms/:code", pairing.Socket, .{
+        .allowed_origins = .any,
+        .max_message_size = pairing.max_message,
+        .timeout = .{ .duration = .{ .raw = pairing.socket_lifetime, .clock = .awake } },
+    });
+
     if (cfg.web_dir) |dir| try app.staticDir("/", dir, .{});
 }
 
 pub fn main(init: std.process.Init) !void {
     const cfg = try anole.config.load(Config, init, .{});
-    var state: App = .{ .api_key = cfg.gemini_api_key, .auth_tokens_url = cfg.gemini_auth_tokens_url, .generate_url = cfg.gemini_generate_url };
+    var state: App = .{
+        .api_key = cfg.gemini_api_key,
+        .auth_tokens_url = cfg.gemini_auth_tokens_url,
+        .generate_url = cfg.gemini_generate_url,
+        .pairing = .init(init.gpa, pairing.limitsOf(cfg)),
+    };
+    // After the server's own deinit: every socket has left the relay by then.
+    defer state.pairing.deinit();
 
     var app = try anole.Server(App).init(init.gpa, .{
         .http = .{ .address = "", .port = cfg.port },
@@ -162,6 +186,7 @@ pub fn main(init: std.process.Init) !void {
 
     var limiter = anole.ratelimit.MemoryLimiter.init(init.gpa, app.io(), .{});
     defer limiter.deinit();
+    state.pairing.limiter = &limiter;
     try routes(&app, cfg, limiter.limiter());
     try app.run();
 }
