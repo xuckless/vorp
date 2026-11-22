@@ -217,7 +217,7 @@ try {
   const again = await guest.open(url, WATCH);
   await until(again, /Rejoindre/, 20);
   await again.click(/Rejoindre/);
-  check('a used code says so', (await until(again, /déjà été utilisé|already used/, 10)) !== undefined);
+  check('a used code says so', (await until(again, /déjà servi|already used/, 10)) !== undefined);
   await wait(400);
   await shot(again, '22-guest-code-used');
 
