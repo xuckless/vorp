@@ -7,7 +7,13 @@ import * as Clipboard from 'expo-clipboard';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { View } from 'react-native';
 
+import { appOrigin, PAIR_TIMING } from '@/config/pairing';
+import type { Pairing, PairEvent } from '@/core/pairing';
+import { createStore } from '@/core/store';
 import { createController } from '@/features/conversation/controller';
+import { createHostPairing } from '@/features/pair/host';
+import { hostPairModel } from '@/features/pair/model';
+import type { PairRuntime } from '@/features/pair/runtime';
 import type { Boot } from '@/features/conversation/Vorp';
 import { useEnrolment } from '@/features/enrolment/controller';
 import { needsEnrolment } from '@/features/enrolment/enrolment';
@@ -31,6 +37,18 @@ import {
   type SetupModel,
 } from './model';
 
+/** Before the owner pairs: nothing to read. */
+const NOT_PAIRING = createStore<Pairing | null>(null);
+
+const PAIR_TAPS: Record<'cancel' | 'stop' | 'press' | 'release' | 'sound' | 'retry', PairEvent> = {
+  cancel: { type: 'cancel' },
+  stop: { type: 'stop' },
+  press: { type: 'pressTalk' },
+  release: { type: 'releaseTalk' },
+  sound: { type: 'soundOn' },
+  retry: { type: 'own', event: { type: 'start' } },
+};
+
 export function AppScreen({
   mode,
   autostart,
@@ -52,8 +70,11 @@ export function AppScreen({
   onMode: (mode: Mode) => void;
 }) {
   // A conversation that ends with a recap opens its transcript.
-  const [{ runtime, levels, history, retryRecap }] = useState(() => createController(mode, boot, (id) => onPage({ name: 'transcript', id })));
+  const [{ runtime, levels, history, retryRecap, keep }] = useState(() => createController(mode, boot, (id) => onPage({ name: 'transcript', id })));
   const { dispatch } = runtime;
+  // Pair by QR (host): made on the first "Pair a phone", then kept for the booth loop.
+  const [pair, setPair] = useState<PairRuntime | null>(null);
+  useEffect(() => () => pair?.dispose(), [pair]);
 
   useEffect(() => {
     const forget = mode === 'live' ? keepSaved(boot.storage, runtime.store) : () => {};
@@ -72,10 +93,26 @@ export function AppScreen({
   const theme = useTheme();
   const reduced = useReducedMotion();
 
+  const pairStore = pair?.store ?? NOT_PAIRING;
+  const pairing = useSyncExternalStore(pairStore.subscribe, pairStore.get, pairStore.get);
+  const paired = pairing ? hostPairModel(pairing, appOrigin()) : undefined;
+  const pairTalk = paired?.view === 'talk' ? paired.talk : undefined;
+
   const talk = talkModel(session, mode);
   // The voice in the air: yours while you read your sentences, Vorp's while it speaks, else the microphone's.
   const enrolling = page.name === 'enrol' && talk === undefined;
-  const level = useLevelProp(enrolling ? boot.enrolment.level : talk?.phase === 'speaking' ? levels.out : levels.mic, true);
+  const level = useLevelProp(
+    pair && pairTalk
+      ? pairTalk.phase === 'speaking'
+        ? pair.levels.out
+        : pair.levels.mic
+      : enrolling
+        ? boot.enrolment.level
+        : talk?.phase === 'speaking'
+          ? levels.out
+          : levels.mic,
+    true,
+  );
   // "Today" and "Yesterday" are counted from when the app opened.
   const [now] = useState(() => Date.now());
 
@@ -83,6 +120,18 @@ export function AppScreen({
   const navigate = (next: Page) => {
     if (mode === 'demo') onMode('live');
     onPage(next);
+  };
+  /** Pair a phone, New code, Show it now: inside the tap, so the audio opens in it. */
+  const startPair = () => {
+    const status = pair?.store.get().status;
+    if (pair && (status === 'ended' || status === 'failed')) return pair.dispatch({ type: 'pair' });
+    // A fresh pairing from Start takes the setup as it is now.
+    const next = createHostPairing(
+      { people: session.people, settings: session.settings },
+      { keep: (languages, utterances, settings) => keep(languages, utterances, settings, false), ownerPrint: boot.enrolment.ownerPrint, interpreterPrints: boot.interpreterPrints },
+    );
+    setPair(next);
+    next.dispatch({ type: 'pair' });
   };
   const start = () => {
     // First launch: offer voice setup once, before the first conversation.
@@ -98,6 +147,8 @@ export function AppScreen({
         mode={mode}
         page={page}
         talk={talk ?? null}
+        pair={paired ?? null}
+        boothSeconds={PAIR_TIMING.boothSeconds}
         setup={setupModel(session, appearance)}
         youChoices={languageChoices(session.people, 'owner')}
         themChoices={languageChoices(session.people, 'other')}
@@ -107,6 +158,8 @@ export function AppScreen({
         history={past.map((c) => historyItem(c, now))}
         level={level}
         onStart={start}
+        onPair={startPair}
+        onPairTap={(tap) => pair?.dispatch(PAIR_TAPS[tap])}
         onStop={() => dispatch({ type: 'stop' })}
         onRetry={() => dispatch({ type: 'start' })}
         onPressTalk={() => dispatch({ type: 'pressTalk', speaker: 'owner' })}

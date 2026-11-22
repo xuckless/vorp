@@ -183,6 +183,7 @@ export function Start({
   voiceChoices,
   toneChoices,
   onStart,
+  onPair,
   onHistory,
   onEnrol,
   onDeleteVoice,
@@ -197,6 +198,8 @@ export function Start({
   voiceChoices: readonly Choice[];
   toneChoices: readonly Choice[];
   onStart: (blob: DOMRect | null) => void;
+  /** Pair by QR: the other person joins on their own phone. */
+  onPair: () => void;
   onHistory: () => void;
   onEnrol: () => void;
   onDeleteVoice: () => void;
@@ -245,9 +248,19 @@ export function Start({
             </div>
           </section>
 
-          <div className="vp-start-slot">
+          <div className="vp-start-slot vp-start-actions">
             <button className="vp-primary" onClick={() => onStart(blob.current?.getBoundingClientRect() ?? null)}>
               Start
+            </button>
+            {/* Pair by QR: the other person joins on their own phone. */}
+            <button className="vp-secondary vp-frost" onClick={onPair}>
+              <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2.5" y="2.5" width="6" height="6" rx="1.6" />
+                <rect x="11.5" y="2.5" width="6" height="6" rx="1.6" />
+                <rect x="2.5" y="11.5" width="6" height="6" rx="1.6" />
+                <path d="M11.5 11.5h2.5v2.5M17.5 11.5v.01M11.5 17.5h.01M14.5 17.5h3v-3" />
+              </svg>
+              Pair a phone
             </button>
           </div>
         </div>

@@ -402,7 +402,7 @@ ${[...Array(7)].map((_, i) => `.vp-panel > .vp-row:nth-child(${i + 2}) { animati
 
 /* Vorp: the start slot lets touches through to the page, so every action in it takes them back
    (the design's "Not now" link had none and could not be pressed). */
-.vp-enrol-actions > * { pointer-events: auto; }
+.vp-enrol-actions > *, .vp-start-actions > * { pointer-events: auto; }
 /* Vorp: a card whose speaker is not known yet carries no hue; the wave pictures it on the plain surface. */
 .vp-card.unknown { --dw-bg: var(--surface-2); }
 

@@ -5,7 +5,7 @@
 import { DEMO_PEOPLE } from '@/config/demo';
 import { languageName } from '@/config/languages';
 import { DEFAULT_SETTINGS } from '@/config/policies';
-import type { Role, Utterance } from '@/core/session';
+import type { Role, SessionSettings, Utterance } from '@/core/session';
 import { asText, createHistory, toConversation, type History } from '@/features/history/history';
 import { createDemoServices, createServices, type Services } from '@/services';
 
@@ -19,6 +19,12 @@ export type Controller = {
   history: History;
   /** Write a conversation's recap again (after it failed). */
   retryRecap: (id: string) => void;
+  /**
+   * Keep a conversation that ended with something heard in it, and write its recap if the recap
+   * is on. `open`: show its transcript once kept (the one-device conversation does; a paired one
+   * goes on to the booth loop).
+   */
+  keep: (languages: Record<Role, string>, utterances: Utterance[], settings: SessionSettings, open: boolean) => void;
 };
 
 export function createController(mode: Mode, boot: Boot, onEnded: (id: string) => void): Controller {
@@ -40,20 +46,22 @@ export function createController(mode: Mode, boot: Boot, onEnded: (id: string) =
     );
   }
 
+  function keep(languages: Record<Role, string>, utterances: Utterance[], kept: SessionSettings, open: boolean) {
+    const now = Date.now();
+    const conversation = toConversation(String(now), now, languages, utterances);
+    history.add(conversation);
+    if (!kept.behaviours.includes('recap')) return;
+    if (open) onEnded(conversation.id);
+    writeRecap(conversation.id);
+  }
+
   const runtime = createRuntime(
     services,
     people,
     settings,
-    (languages: Record<Role, string>, utterances: Utterance[]) => {
-      const now = Date.now();
-      const conversation = toConversation(String(now), now, languages, utterances);
-      history.add(conversation);
-      if (!runtime.store.get().settings.behaviours.includes('recap')) return;
-      onEnded(conversation.id);
-      writeRecap(conversation.id);
-    },
+    (languages: Record<Role, string>, utterances: Utterance[]) => keep(languages, utterances, runtime.store.get().settings, true),
     mode === 'demo' ? undefined : boot.enrolment.ownerPrint,
     mode === 'demo' ? undefined : boot.interpreterPrints,
   );
-  return { runtime, levels: createLevels(services), history, retryRecap: writeRecap };
+  return { runtime, levels: createLevels(services), history, retryRecap: writeRecap, keep };
 }
