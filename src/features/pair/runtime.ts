@@ -11,18 +11,7 @@ import type { Embedding } from '@/core/voiceprint';
 import { createLevels, type Levels } from '@/features/conversation/levels';
 import { createSessionRunner } from '@/features/conversation/runtime';
 import { NO_PRINTS, type InterpreterPrints } from '@/features/conversation/voice';
-import type { AudioInput, AudioOutput, Cues, PairingLink, Translator, VoiceEmbedder, WakeLock } from '@/services/types';
-import { ServiceError } from '@/services/types';
-
-export type PairServices = {
-  input: AudioInput;
-  output: AudioOutput;
-  translator: Translator;
-  voice: VoiceEmbedder;
-  link: PairingLink;
-  wake: WakeLock;
-  cues: Cues;
-};
+import { ServiceError, type PairServices } from '@/services/types';
 
 export type PairRuntimeOptions = {
   /** Host: keep the conversation (History, and the recap if it is on). */

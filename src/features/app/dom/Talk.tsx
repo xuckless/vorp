@@ -10,7 +10,8 @@ import { CaptionCard, Glow, Mark, Presence, ProblemCard, QuietCard, Ring, StopBu
 
 import type { TalkModel } from '../model';
 
-const PROBLEM: Record<SessionErrorKind, { title: string; body: string; action: string }> = {
+/** A conversation's problems as the owner reads them (English), with the one action that fixes each. */
+export const PROBLEM: Record<SessionErrorKind, { title: string; body: string; action: string }> = {
   micDenied: { title: 'Vorp needs the microphone', body: 'Allow it in the address bar, then try again.', action: 'Try again' },
   mic: { title: 'The microphone stopped', body: 'Check it’s connected and nothing else is using it.', action: 'Try again' },
   token: { title: 'Vorp couldn’t start', body: 'Check your connection and try again.', action: 'Try again' },
@@ -18,7 +19,7 @@ const PROBLEM: Record<SessionErrorKind, { title: string; body: string; action: s
   timeLimit: { title: 'That’s ten minutes', body: 'Conversations stop at ten minutes. Start a new one to keep going; this one is saved in History.', action: 'Start a new one' },
 };
 
-const MOOD: Record<SessionErrorKind, Mood> = { micDenied: 'unsure', mic: 'sad', token: 'sad', socket: 'sad', timeLimit: 'sleepy' };
+export const MOOD: Record<SessionErrorKind, Mood> = { micDenied: 'unsure', mic: 'sad', token: 'sad', socket: 'sad', timeLimit: 'sleepy' };
 
 export function Talk({
   talk,

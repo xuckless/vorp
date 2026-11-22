@@ -61,7 +61,7 @@ export type PairTalkModel = {
   /** The browser kept playback locked: "Tap to turn on sound". */
   sound: boolean;
   /** It is over: the host's end card (saved or not), or the guest's "They ended the conversation". */
-  end?: { kind: 'host'; saved: boolean } | { kind: 'guest' };
+  end?: { kind: 'host'; saved: boolean; recap: boolean } | { kind: 'guest' };
   /** This phone's interpreter could not carry on. */
   problem?: SessionErrorKind;
   handsFree: boolean;
@@ -160,13 +160,23 @@ export function pairTalkModel(p: Pairing): PairTalkModel | undefined {
     cards,
     ...(!ended && p.link !== 'up' ? { aside: 'locked' as const } : !ended && p.peer !== 'here' ? { aside: 'peerAway' as const } : {}),
     sound: p.soundBlocked && !ended,
-    ...(ended ? { end: p.role === 'host' ? { kind: 'host' as const, saved: p.saved } : { kind: 'guest' as const } } : {}),
+    ...(ended ? { end: p.role === 'host' ? { kind: 'host' as const, saved: p.saved, recap: p.setup.settings.behaviours.includes('recap') } : { kind: 'guest' as const } } : {}),
     ...(!ended && p.own.connection === 'failed' ? { problem: p.own.error?.kind ?? 'socket' } : {}),
     handsFree,
     held: p.own.held === 'owner',
     canHold: !ended && !away && p.own.connection === 'open' && !handsFree,
     rest: ended || away || connecting,
   };
+}
+
+/**
+ * What the light does for the paired view: its phase and side, and where its level comes from
+ * (`voice`: the microphone while hearing you, the speaker while speaking to you; `busy`: a gentle
+ * working while connecting; `rest`: still).
+ */
+export function pairLight(talk: PairTalkModel): { phase: PairPhase; who: 'you' | 'them'; level: 'voice' | 'rest' | 'busy' } {
+  const level = talk.end || talk.problem ? 'rest' : talk.rest ? 'busy' : talk.phase === 'hearing' && talk.who === 'them' ? 'rest' : talk.phase === 'hearing' || talk.phase === 'speaking' ? 'voice' : 'rest';
+  return { phase: talk.rest ? 'listening' : talk.phase, who: talk.who, level };
 }
 
 // ---------------------------------------------------------------- the host's code

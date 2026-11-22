@@ -133,9 +133,9 @@ describe('the paired conversation', () => {
 
   test('ended: the host’s end card says whether it was kept', () => {
     const saved = pairTalkModel(after([...live, ...mine, { type: 'stop' }]))!;
-    expect(saved.end).toEqual({ kind: 'host', saved: true });
+    expect(saved.end).toEqual({ kind: 'host', saved: true, recap: false });
     expect(saved.cards).toEqual([]);
-    expect(pairTalkModel(after([...live, { type: 'ended', reason: 'guest_stopped' }]))!.end).toEqual({ kind: 'host', saved: false });
+    expect(pairTalkModel(after([...live, { type: 'ended', reason: 'guest_stopped' }]))!.end).toEqual({ kind: 'host', saved: false, recap: false });
   });
 
   test('hands-free off: Hold to talk is there once connected', () => {

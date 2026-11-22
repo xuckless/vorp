@@ -1,6 +1,8 @@
 // Pair by QR: where things live and how long the moments last. The wire contract is
 // docs/pairing-protocol.md; the server enforces the room limits (10-minute codes, 60 s rejoin).
 
+import type { SessionSettings } from '@/core/session';
+
 import { TOKEN_URL } from './conversation';
 import { INTERPRETER_VOICE } from './voices';
 
@@ -21,6 +23,12 @@ export const ROOMS_URL = TOKEN_URL.replace(/token$/, 'rooms');
 
 /** The path a guest opens, after the app's origin: the QR code says `<origin>/join/<code>`. */
 export const JOIN_PATH = '/join/';
+
+/**
+ * The web app's origin, for the QR code: where the page runs (the token server serves it in
+ * production), or EXPO_PUBLIC_APP_URL where there is no page origin (native).
+ */
+export const appOrigin = () => process.env.EXPO_PUBLIC_APP_URL ?? (typeof location === 'undefined' ? '' : location.origin);
 
 export const PAIR_TIMING = {
   /** The host's "They're in" moment before the conversation shows (the design's 1.9 s). */
@@ -53,3 +61,9 @@ export const GUEST_VOICE = INTERPRETER_VOICE;
  * taking turns and the transcript guard work without it.
  */
 export const GUEST_VOICE_FILTER = true;
+
+/**
+ * A paired phone's session settings from the owner's: the paired prompt row (one direction, the
+ * other phone left alone), and no auto-detect (the other person's language is known).
+ */
+export const pairedSettings = (settings: SessionSettings): SessionSettings => ({ ...settings, prompt: 'paired', autoDetect: false });
