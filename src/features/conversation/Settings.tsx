@@ -139,27 +139,6 @@ export function Settings({ open, session, dispatch, onClose }: { open: boolean; 
         })}
       </Section>
 
-      <Section name="Voice">
-        <View style={styles.row}>
-          {VOICES.map((v) => {
-            const on = v.name === participants[0].voice;
-            return (
-              <Press
-                key={v.name}
-                disabled={locked}
-                accessibilityLabel={`${v.name}, ${v.character}`}
-                accessibilityState={{ selected: on }}
-                onPress={() => configure(participants.map((p) => ({ ...p, voice: v.name })))}
-                style={[styles.voice, { borderRadius: theme.radius.sm, paddingHorizontal: theme.space.md }, on && picked]}
-              >
-                <Text style={on ? title : text}>{v.name}</Text>
-                <Text style={[muted, { fontSize: 13 }]}>{v.character}</Text>
-              </Press>
-            );
-          })}
-        </View>
-      </Section>
-
       <Section name="Avatar">
         <View style={styles.row}>
           {offered('agentAvatar').map((id) => {
@@ -195,6 +174,27 @@ export function Settings({ open, session, dispatch, onClose }: { open: boolean; 
           ))}
         </View>
         <Toggle label="Reduce motion" on={reduce} onPress={() => motionPreference.set(reduce ? 'system' : 'reduce')} />
+      </Section>
+
+      <Section name="Voice">
+        <View style={styles.row}>
+          {VOICES.map((v) => {
+            const on = v.name === participants[0].voice;
+            return (
+              <Press
+                key={v.name}
+                disabled={locked}
+                accessibilityLabel={`${v.name}, ${v.character}`}
+                accessibilityState={{ selected: on }}
+                onPress={() => configure(participants.map((p) => ({ ...p, voice: v.name })))}
+                style={[styles.voice, { borderRadius: theme.radius.sm, paddingHorizontal: theme.space.md }, on && picked]}
+              >
+                <Text style={on ? title : text}>{v.name}</Text>
+                <Text style={[muted, { fontSize: 13 }]}>{v.character}</Text>
+              </Press>
+            );
+          })}
+        </View>
       </Section>
     </Sheet>
   );
