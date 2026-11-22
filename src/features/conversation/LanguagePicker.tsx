@@ -37,9 +37,25 @@ export function LanguagePicker({
   return (
     <Layer
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        setQuery('');
+        onClose();
+      }}
       kind="popover"
-      style={[styles.panel, { right, backgroundColor: theme.color.surface, borderRadius: theme.radius.lg, padding: theme.space.sm }]}
+      style={[
+        styles.panel,
+        {
+          right,
+          backgroundColor: theme.color.surface,
+          borderRadius: theme.radius.lg,
+          padding: theme.space.sm,
+          shadowColor: '#000000',
+          shadowOpacity: theme.scheme === 'light' ? 0.12 : 0.35,
+          shadowRadius: 20,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 8,
+        },
+      ]}
     >
       {(shown) => (
         <>
@@ -50,7 +66,17 @@ export function LanguagePicker({
             placeholder="Search"
             placeholderTextColor={theme.color.textMuted}
             accessibilityLabel="Search languages"
-            style={[text, styles.search, { paddingHorizontal: theme.space.md, outlineStyle: 'none' } as object]}
+            style={[
+              text,
+              styles.search,
+              {
+                paddingHorizontal: theme.space.md,
+                marginBottom: theme.space.xs,
+                borderRadius: theme.radius.sm,
+                backgroundColor: theme.color.surfaceRaised,
+                outlineStyle: 'none',
+              } as object,
+            ]}
           />
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             {rows.map((l, i) => {
