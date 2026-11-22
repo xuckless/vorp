@@ -836,6 +836,9 @@ function clear(color: string): boolean {
 
 /** The colour behind an element: its nearest ancestor's that has one. */
 export function backgroundOf(el: Element): string {
+  // Vorp: a translucent (frosted) card can't be pictured, so it names the solid colour it reads as.
+  const named = getComputedStyle(el).getPropertyValue("--dw-bg").trim();
+  if (named) return named;
   for (let n = el.parentElement; n; n = n.parentElement) {
     const c = getComputedStyle(n).backgroundColor;
     if (!clear(c)) return c;

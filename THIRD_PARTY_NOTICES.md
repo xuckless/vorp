@@ -11,13 +11,41 @@ copies and are not listed here; their licences ship with the packages.
 - **Licence:** MIT, Copyright (c) 2026 Jakub Antalik. Full text in
   `src/ui/effects/vendor/LICENSE`.
 - **Copied into:** `src/ui/effects/vendor/`: `thinking-orbs`, `border-beam`, `distortion-waves`,
-  `bot-avatars`, `voice-ring`.
+  `bot-avatars`, `voice-ring`, `voice-glow`, `liquid-gooey`.
 - **Changes:** imports moved back from Preact (`preact/compat`) to React 19; a
   `'use no memo'` directive at the top of the component and hook files keeps the React Compiler
   off them; `voice-ring/useMicrophone.ts` removed (Vorp supplies the audio level itself). `bot-avatars` gained a `talk`
   level that opens the mouth while the interpreter speaks (marked "Vorp" in `types.ts`,
-  `BotAvatar.tsx` and `draw.ts`). Each
-  folder's `index.ts` carries a source comment.
+  `BotAvatar.tsx` and `draw.ts`). `voice-glow/useMicrophone.ts` removed for the same reason as
+  the ring's. `liquid-gooey`: `createPortal` imported from `react-dom`, Vite's `import.meta.hot`
+  guard removed and `import.meta.env.DEV` read as `__DEV__` (Metro has no `import.meta`).
+  `distortion-waves/capture.ts` `backgroundOf` reads a `--dw-bg` custom property first, so a
+  frosted (translucent) card names the solid colour the wave pictures it on (from the owner's
+  Vorp design, `xuckless/the-wallpaper-project` `src/vorp/distortion-waves`, 22 November 2026).
+  Each folder's `index.ts` carries a source comment.
+
+## blobatar
+
+- **Source:** [Alain00/blobatar](https://github.com/Alain00/blobatar), `packages/blobatar/src` and
+  the Preact adapter `packages/preact/src` (`index.tsx`, `gaze.ts`), commit
+  `2c29a50bc162a2f78ad26548dca02988813fe473` (v2.7.0), taken via the owner's Vorp design
+  (`xuckless/the-wallpaper-project`, `src/vorp/blobatar`).
+- **Licence:** MIT, Copyright (c) 2026 Alain. Full text in
+  `src/ui/effects/vendor/blobatar/LICENSE`.
+- **Copied into:** `src/ui/effects/vendor/blobatar/` (the adapter in `react/`).
+- **Changes:** the Preact adapter is ported back to React 19 (hooks from `react`, `className`,
+  React's JSX types) and opts out of the React Compiler with `'use no memo'`. The core is
+  unchanged.
+
+## Vorp design (the owner's)
+
+- **Source:** the owner's signed-off Vorp design, `xuckless/the-wallpaper-project` `src/vorp/`
+  (Preact prototype, 22 November 2026). The owner's own work, contributed to Vorp under
+  Apache-2.0.
+- **Copied into:** `src/ui/dom/` (styles, controls, aurora, ring, logo, caption card, glow,
+  swapper) and the DOM screens in `src/features/app/dom/`.
+- **Changes:** Preact to React 19, wired to the app's session, settings, enrolment and history
+  instead of the prototype's scripted data.
 
 ## Wubble glass
 

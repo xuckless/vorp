@@ -2,7 +2,7 @@
 // (c) 2026 Jakub Antalik, see ../LICENSE), via xuckless/the-wallpaper-project
 // src/ultra-reactivate/vendor/border-beam at 598f814 (19 Nov 2026). Changes: Preact imports point back
 // at React 19.
-// Only src/ui/slots imports this folder.
+// Only src/ui imports this folder (the slots and the DOM design system in src/ui/dom).
 
 export { BorderBeam } from './BorderBeam';
 export { default } from './BorderBeam';

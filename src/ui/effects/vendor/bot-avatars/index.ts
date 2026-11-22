@@ -2,7 +2,7 @@
 // (c) 2026 Jakub Antalik, see ../LICENSE), via xuckless/the-wallpaper-project
 // src/ultra-reactivate/vendor/bot-avatars at 598f814 (19 Nov 2026). Changes: Preact imports point back
 // at React 19; a `talk` level opens the mouth (marked "Vorp" in types, BotAvatar and draw).
-// Only src/ui/slots imports this folder.
+// Only src/ui imports this folder (the slots and the DOM design system in src/ui/dom).
 
 export { BotAvatar } from './BotAvatar';
 export { default } from './BotAvatar';
