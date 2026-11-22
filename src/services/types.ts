@@ -170,3 +170,6 @@ export type Services = {
   recap: Recap;
   voice: VoiceEmbedder;
 };
+
+/** A paired phone's services: its own interpreter's, without a recap, and the room's. */
+export type PairServices = Omit<Services, 'recap'> & { link: PairingLink; wake: WakeLock; cues: Cues };
