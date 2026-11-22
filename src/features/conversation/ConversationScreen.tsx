@@ -17,6 +17,7 @@ import { motion, timing, TOUCH_TARGET, useReducedMotion, useTheme, type Theme } 
 import { COLUMN_WIDTH, LanguagePicker } from './LanguagePicker';
 import { createLevels } from './levels';
 import { createRuntime, type Runtime } from './runtime';
+import { Settings } from './Settings';
 import { captions, stageOf, type Stage, type StagePhase } from './stage';
 import { Transcript } from './Transcript';
 
@@ -96,6 +97,7 @@ export function ConversationScreen() {
   // Which overlay is open: visual-only, so it lives here.
   const [editing, setEditing] = useState<ParticipantId | null>(null);
   const [reading, setReading] = useState(false);
+  const [setting, setSetting] = useState(false);
 
   const stage = stageOf(session);
   const open = session.connection === 'open';
@@ -130,6 +132,9 @@ export function ConversationScreen() {
                 <Text style={styles.linkText}>Transcript</Text>
               </Press>
             ) : null}
+            <Press onPress={() => setSetting(true)} style={styles.link}>
+              <Text style={styles.linkText}>Settings</Text>
+            </Press>
           </View>
         </View>
 
@@ -214,6 +219,13 @@ export function ConversationScreen() {
           if (person) dispatch({ type: 'setParticipant', participant: { ...person, language: code, name: `${languageName(code)} speaker` } });
           setEditing(null);
         }}
+      />
+      <Settings
+        open={setting}
+        voice={session.participants[0].voice}
+        voiceLocked={!settable}
+        onVoice={(voice) => session.participants.forEach((p) => dispatch({ type: 'setParticipant', participant: { ...p, voice } }))}
+        onClose={() => setSetting(false)}
       />
       <Transcript open={reading} session={session} onClose={() => setReading(false)} />
     </View>
