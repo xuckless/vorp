@@ -2,12 +2,13 @@
 // lines were spoken once by Gemini's speech model (gemini-3.8-flash-tts, 21 November 2026; the
 // two people as Kore and Puck, the interpreter as Charon) and ship as 24 kHz mono WAV files.
 
-import type { Participant } from '@/core/session';
+import type { People } from '@/core/session';
 
-export const DEMO_PARTICIPANTS: Participant[] = [
-  { id: 'p1', name: 'English speaker', language: 'en', voice: 'Charon' },
-  { id: 'p2', name: 'French speaker', language: 'fr', voice: 'Charon' },
-];
+/** The owner speaks English; the other person French. */
+export const DEMO_PEOPLE: People = {
+  owner: { language: 'en', voice: 'Charon' },
+  other: { language: 'fr', voice: 'Charon' },
+};
 
 export type DemoTurn = {
   /** The language spoken, which names the speaker. */

@@ -1,14 +1,14 @@
 /// <reference types="bun" />
 import { expect, test } from 'bun:test';
 
-import { initialSession, transition, type Participant, type Session, type SessionEvent, type SessionSettings } from '@/core/session';
+import { initialSession, transition, type People, type Session, type SessionEvent, type SessionSettings } from '@/core/session';
 
 import { captions, spotlight, stageOf } from './stage';
 
-const people: Participant[] = [
-  { id: 'a', name: 'Alex', language: 'en', voice: 'Charon' },
-  { id: 'b', name: 'Béa', language: 'fr', voice: 'Charon' },
-];
+const people: People = {
+  owner: { language: 'en', voice: 'Charon' },
+  other: { language: 'fr', voice: 'Charon' },
+};
 const settings: SessionSettings = {
   detection: 'auto',
   overlap: { id: 'queue', speechDuringPlayback: 'queue', holdSeconds: 20 },
@@ -16,6 +16,7 @@ const settings: SessionSettings = {
   echoMatch: 0.6,
   tone: 'neutral',
   behaviours: [],
+  autoDetect: true,
 };
 const run = (events: SessionEvent[]): Session => events.reduce((s, e) => transition(s, e)[0], initialSession(people, settings));
 const open: SessionEvent[] = [{ type: 'start' }, { type: 'connected' }];
@@ -33,26 +34,28 @@ test('the stage follows the conversation', () => {
   expect(stageOf(run(sent)).phase).toBe('translating');
 
   const spoken: SessionEvent[] = [...sent, { type: 'outputAudio', pcm }, { type: 'playbackStarted', utteranceId: 'u1' }];
-  // Béa (right) spoke French, so the interpreter speaks English and leans left, to Alex.
-  expect(stageOf(run(spoken))).toMatchObject({ phase: 'speaking', direction: -1, languages: ['en'] });
+  // The other person (right) spoke French, so the interpreter speaks English and leans left, to the owner.
+  expect(stageOf(run(spoken))).toMatchObject({ phase: 'speaking', direction: -1, language: 'en' });
 });
 
-test('a three-person conversation names every target language while speaking', () => {
-  const trio: Participant[] = [
-    ...people,
-    { id: 'c', name: 'Carlos', language: 'es', voice: 'Charon' },
-  ];
+test("speaking to the other person names the language they last used", () => {
   const events: SessionEvent[] = [
     ...open,
+    { type: 'speechStarted' },
+    { type: 'inputTranscript', text: 'नमस्ते' },
+    { type: 'speechEnded' },
+    { type: 'sourceLanguage', language: 'hi' },
+    { type: 'outputAudio', pcm },
+    { type: 'turnComplete' },
+    { type: 'playbackFinished', utteranceId: 'u1' },
     { type: 'speechStarted' },
     { type: 'inputTranscript', text: 'Hello' },
     { type: 'speechEnded' },
     { type: 'sourceLanguage', language: 'en' },
     { type: 'outputAudio', pcm },
-    { type: 'playbackStarted', utteranceId: 'u1' },
+    { type: 'playbackStarted', utteranceId: 'u2' },
   ];
-  const s = events.reduce((st, e) => transition(st, e)[0], initialSession(trio, settings));
-  expect(stageOf(s)).toMatchObject({ phase: 'speaking', languages: ['fr', 'es'] });
+  expect(stageOf(run(events))).toMatchObject({ phase: 'speaking', direction: 1, language: 'hi' });
 });
 
 test('captions leave out what was never heard', () => {
@@ -61,9 +64,12 @@ test('captions leave out what was never heard', () => {
   expect(captions(run([...open, { type: 'speechStarted' }, { type: 'inputTranscript', text: 'Hi' }]))).toHaveLength(1);
 });
 
-test('a placeholder answer to noise is not a caption', () => {
-  const s = run([...open, { type: 'speechStarted' }, { type: 'inputTranscript', text: 'mm' }, { type: 'speechEnded' }, { type: 'outputTranscript', text: '<no speech detected>' }]);
-  expect(captions(s)).toEqual([]);
+test('a placeholder answer to noise or echo is not a caption, in either form seen live', () => {
+  for (const placeholder of ['<no speech detected>', '<no speech>{pause}']) {
+    const s = run([...open, { type: 'speechStarted' }, { type: 'inputTranscript', text: 'die' }, { type: 'speechEnded' }, { type: 'outputTranscript', text: placeholder }]);
+    expect(captions(s)).toEqual([]);
+    expect(spotlight(s).card).toBeUndefined();
+  }
 });
 
 test('the spotlight is the line being spoken, with the next ones waiting behind it', () => {

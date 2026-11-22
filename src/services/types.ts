@@ -1,7 +1,7 @@
 // The I/O interfaces. Platform and provider code implement these; nothing outside
 // src/services knows which implementation runs.
 
-import type { Participant, Pcm, SessionErrorKind, SessionSettings, UtteranceId } from '@/core/session';
+import type { People, Pcm, SessionErrorKind, SessionSettings, UtteranceId } from '@/core/session';
 
 export type Unsubscribe = () => void;
 
@@ -49,7 +49,7 @@ export type TranslatorEvent =
   /** `language` is the BCP-47 code the server detected, when it reports one. */
   | { type: 'inputTranscript'; text: string; language?: string; finished?: boolean }
   | { type: 'outputTranscript'; text: string; language?: string }
-  /** The model's own report of the language it is interpreting from (BCP-47, a participant's). */
+  /** The model's own report of the language it is interpreting from (BCP-47, normalised against the languages table; any language). */
   | { type: 'sourceLanguage'; language: string }
   /** A caption-only note on the utterance being interpreted. */
   | { type: 'note'; text: string }
@@ -65,7 +65,7 @@ export interface Translator {
    * Opens a session (resuming the previous one after a drop). Resolves once it is ready;
    * rejects with a ServiceError of kind 'token' or 'socket'.
    */
-  connect(participants: readonly Participant[], settings: SessionSettings): Promise<void>;
+  connect(people: People, settings: SessionSettings): Promise<void>;
   /** Ends the session for good; the next connect starts fresh. */
   close(): void;
   /** A held talk button went down. Manual detection marks the turn start; auto does nothing. */

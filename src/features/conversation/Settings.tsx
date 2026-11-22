@@ -1,4 +1,4 @@
-// Settings: who is talking and how turns end, how the interpreter behaves, and how Vorp looks.
+// Settings: how turns end and whose language is followed, how the interpreter behaves, and how Vorp looks.
 // The look is chosen with the widgets themselves, so picking one is looking at it. The setup
 // belongs to the session, so every change here is a `configure` event.
 
@@ -6,10 +6,8 @@ import { useSyncExternalStore, type ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { BEHAVIOURS, TONES } from '@/config/behaviours';
-import { NEXT_LANGUAGES, PEOPLE_COUNTS } from '@/config/conversation';
-import { languageName } from '@/config/languages';
 import { VOICES } from '@/config/voices';
-import type { Participant, Session, SessionEvent, SessionSettings } from '@/core/session';
+import type { People, Session, SessionEvent, SessionSettings } from '@/core/session';
 import { Press } from '@/ui/primitives';
 import { chooseSlot, implementation, implementationIds, useSlotChoices, type ImplementationId } from '@/ui/slots';
 import { motionPreference, themePreference, TOUCH_TARGET, useTheme, type ThemePreference } from '@/ui/tokens';
@@ -24,16 +22,6 @@ const THEMES: readonly { id: ThemePreference; label: string }[] = [
   { id: 'light', label: 'Light' },
   { id: 'dark', label: 'Dark' },
 ];
-
-/** The participants for a people count: the first ones kept, new ones in a language nobody speaks yet. */
-export function withCount(people: readonly Participant[], count: number): Participant[] {
-  const next = people.slice(0, count);
-  while (next.length < count) {
-    const language = NEXT_LANGUAGES.find((code) => !next.some((p) => p.language === code)) ?? NEXT_LANGUAGES[0];
-    next.push({ id: `p${next.length + 1}`, name: `${languageName(language)} speaker`, language, voice: next[0].voice });
-  }
-  return next;
-}
 
 function useText() {
   const theme = useTheme();
@@ -80,22 +68,24 @@ export function Settings({ open, session, dispatch, onClose }: { open: boolean; 
   const choices = useSlotChoices();
   const reduce = useSyncExternalStore(motionPreference.subscribe, motionPreference.get, motionPreference.get) === 'reduce';
   const themeChoice = useSyncExternalStore(themePreference.subscribe, themePreference.get, themePreference.get);
-  const { participants, settings } = session;
+  const { people, settings } = session;
   const locked = session.connection !== 'idle' && session.connection !== 'failed';
-  const configure = (people: Participant[], next: Partial<SessionSettings> = {}) => dispatch({ type: 'configure', participants: people, settings: { ...settings, ...next } });
+  const configure = (who: People, next: Partial<SessionSettings> = {}) => dispatch({ type: 'configure', people: who, settings: { ...settings, ...next } });
 
   const { text, muted, title, picked } = useText();
 
   return (
     <Sheet open={open} title="Settings" onClose={onClose}>
-      {locked ? <Text style={muted}>Stop the conversation to change who is talking and how the interpreter behaves</Text> : null}
+      {locked ? <Text style={muted}>Stop the conversation to change the languages and how the interpreter behaves</Text> : null}
 
-      <Section name="People">
-        <View style={styles.row}>
-          {PEOPLE_COUNTS.map((count) => (
-            <Option key={count} label={String(count)} on={participants.length === count} disabled={locked} onPress={() => configure(withCount(participants, count))} />
-          ))}
-        </View>
+      <Section name="Languages">
+        <Toggle
+          label="Auto-detect their language"
+          help="Vorp answers them in the language they last spoke. Off: always in the language you picked"
+          on={settings.autoDetect}
+          disabled={locked}
+          onPress={() => configure(people, { autoDetect: !settings.autoDetect })}
+        />
       </Section>
 
       <Section name="Turns">
@@ -104,21 +94,21 @@ export function Settings({ open, session, dispatch, onClose }: { open: boolean; 
           help="Vorp hears when someone stops talking. Off: hold a button to talk"
           on={settings.detection === 'auto'}
           disabled={locked}
-          onPress={() => configure(participants, { detection: settings.detection === 'auto' ? 'manual' : 'auto' })}
+          onPress={() => configure(people, { detection: settings.detection === 'auto' ? 'manual' : 'auto' })}
         />
         <Toggle
           label="Mute while speaking"
           help="For loud rooms: Vorp stops listening while it talks"
           on={settings.pauseMicWhileSpeaking}
           disabled={locked}
-          onPress={() => configure(participants, { pauseMicWhileSpeaking: !settings.pauseMicWhileSpeaking })}
+          onPress={() => configure(people, { pauseMicWhileSpeaking: !settings.pauseMicWhileSpeaking })}
         />
       </Section>
 
       <Section name="Tone">
         <View style={styles.row}>
           {TONES.map((tone) => (
-            <Option key={tone.id} label={tone.label} on={settings.tone === tone.id} disabled={locked} onPress={() => configure(participants, { tone: tone.id })} />
+            <Option key={tone.id} label={tone.label} on={settings.tone === tone.id} disabled={locked} onPress={() => configure(people, { tone: tone.id })} />
           ))}
         </View>
       </Section>
@@ -133,7 +123,7 @@ export function Settings({ open, session, dispatch, onClose }: { open: boolean; 
               help={b.experimental ? `${b.help}. Experimental` : b.help}
               on={on}
               disabled={locked}
-              onPress={() => configure(participants, { behaviours: on ? settings.behaviours.filter((id) => id !== b.id) : [...settings.behaviours, b.id] })}
+              onPress={() => configure(people, { behaviours: on ? settings.behaviours.filter((id) => id !== b.id) : [...settings.behaviours, b.id] })}
             />
           );
         })}
@@ -179,14 +169,14 @@ export function Settings({ open, session, dispatch, onClose }: { open: boolean; 
       <Section name="Voice">
         <View style={styles.row}>
           {VOICES.map((v) => {
-            const on = v.name === participants[0].voice;
+            const on = v.name === people.owner.voice;
             return (
               <Press
                 key={v.name}
                 disabled={locked}
                 accessibilityLabel={`${v.name}, ${v.character}`}
                 accessibilityState={{ selected: on }}
-                onPress={() => configure(participants.map((p) => ({ ...p, voice: v.name })))}
+                onPress={() => configure({ owner: { ...people.owner, voice: v.name }, other: { ...people.other, voice: v.name } })}
                 style={[styles.voice, { borderRadius: theme.radius.sm, paddingHorizontal: theme.space.md }, on && picked]}
               >
                 <Text style={on ? title : text}>{v.name}</Text>

@@ -2,17 +2,18 @@
 // with plain data. `saved.ts` connects it to the owners and to storage.
 
 import { BEHAVIOURS, TONES } from '@/config/behaviours';
-import { DEFAULT_PARTICIPANTS } from '@/config/conversation';
+import { DEFAULT_PEOPLE } from '@/config/conversation';
 import { LANGUAGES } from '@/config/languages';
 import { DEFAULT_SETTINGS } from '@/config/policies';
 import { VOICES } from '@/config/voices';
-import type { Participant, SessionSettings } from '@/core/session';
+import type { People, Person, SessionSettings } from '@/core/session';
 
 export type ThemeChoice = 'system' | 'light' | 'dark';
 export type MotionChoice = 'system' | 'reduce';
 
 export type Saved<Slots> = {
-  participants: Participant[];
+  people: People;
+  autoDetect: boolean;
   detection: SessionSettings['detection'];
   pauseMicWhileSpeaking: boolean;
   tone: string;
@@ -22,9 +23,29 @@ export type Saved<Slots> = {
   motion: MotionChoice;
 };
 
-export type Setup = { participants: Participant[]; settings: SessionSettings };
+export type Setup = { people: People; settings: SessionSettings };
 
 const oneOf = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T => (allowed.includes(value as T) ? (value as T) : fallback);
+
+/** A saved person, keeping each field only if the tables still know it. */
+function person(value: unknown, fallback: Person): Person {
+  const p = (typeof value === 'object' && value !== null ? value : {}) as Partial<Record<keyof Person, unknown>>;
+  return {
+    language: LANGUAGES.some((l) => l.code === p.language) ? (p.language as string) : fallback.language,
+    voice: VOICES.some((v) => v.name === p.voice) ? (p.voice as string) : fallback.voice,
+  };
+}
+
+/**
+ * The owner and the other person. Snapshots from before Vorp had an owner hold `participants` in
+ * seat order: the first becomes the owner, the second the other person, the rest are dropped.
+ */
+function people(saved: { people?: unknown; participants?: unknown }): People {
+  const pair = saved.people as Partial<Record<keyof People, unknown>> | undefined;
+  const seats = Array.isArray(saved.participants) ? saved.participants : [];
+  const [owner, other] = typeof pair === 'object' && pair !== null ? [pair.owner, pair.other] : [seats[0], seats[1]];
+  return { owner: person(owner, DEFAULT_PEOPLE.owner), other: person(other, DEFAULT_PEOPLE.other) };
+}
 
 /** A stored snapshot may be from an older build: keep only what the tables still know. */
 export function restore<Slots extends Record<string, string>>(
@@ -40,19 +61,17 @@ export function restore<Slots extends Record<string, string>>(
   } catch {
     // A snapshot that does not parse is the same as none.
   }
-  const people = Array.isArray(saved.participants)
-    ? saved.participants.filter((p) => LANGUAGES.some((l) => l.code === p?.language) && VOICES.some((v) => v.name === p?.voice))
-    : [];
   const slots = Object.fromEntries(Object.keys(defaults).map((slot) => [slot, oneOf(saved.slots?.[slot], offered[slot], defaults[slot])])) as Slots;
   return {
     setup: {
-      participants: people.length >= 2 ? people : DEFAULT_PARTICIPANTS,
+      people: people(saved),
       settings: {
         ...DEFAULT_SETTINGS,
         detection: oneOf(saved.detection, ['auto', 'manual'], DEFAULT_SETTINGS.detection),
         pauseMicWhileSpeaking: typeof saved.pauseMicWhileSpeaking === 'boolean' ? saved.pauseMicWhileSpeaking : DEFAULT_SETTINGS.pauseMicWhileSpeaking,
         tone: oneOf(saved.tone, TONES.map((t) => t.id), DEFAULT_SETTINGS.tone as (typeof TONES)[number]['id']),
         behaviours: Array.isArray(saved.behaviours) ? saved.behaviours.filter((id) => BEHAVIOURS.some((b) => b.id === id)) : DEFAULT_SETTINGS.behaviours,
+        autoDetect: typeof saved.autoDetect === 'boolean' ? saved.autoDetect : DEFAULT_SETTINGS.autoDetect,
       },
     },
     slots,

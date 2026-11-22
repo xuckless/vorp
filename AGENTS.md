@@ -11,13 +11,16 @@ decision changes, change it here in the same commit as the code.
 
 ## Product
 
-- **Conversation setup.** Pick how many people are talking and each person's language. Vorp
-  translates every utterance for everyone else.
+- **One owner's interpreter** (owner, 21 November 2026). Vorp is one person's device, with no
+  accounts. The owner ("you") sets their native language; the other person ("them") gets a
+  language the owner picks. Everything that is not in the owner's language is translated into
+  it, whatever language it is. The owner's speech goes into the picked language or, with
+  auto-detect, into the language the other person last spoke.
 - **Turn flow.** Listen, detect the end of the utterance, translate, speak. No step blocks
   another: capture continues while a translation is being produced or spoken.
-- **Hands-free is the goal.** Push-to-talk per person is the first working version only. The
-  target is no buttons: voice activity detection ends the turn and the detected language picks the
-  speaker and the direction.
+- **Hands-free is the goal.** Push-to-talk is the first working version only. The target is no
+  buttons: voice activity detection ends the turn and the detected language picks the speaker
+  (the owner's language is the owner, any other is the other person) and so the direction.
 - **The agent is an interpreter, not a chatbot.** It conveys meaning, tone and register, never
   answers on its own behalf, and never adds or drops content.
 
@@ -256,7 +259,11 @@ real `gemini-3.8-live` sessions with `bun run e2e:live`.
   whole at the end of the utterance.
 - **Transcripts carry no `languageCode`.** The model reports the language itself through a
   declared function, `report_language` (`languageTool` in `prompts.ts`), called at the end of the
-  utterance; the reducer routes the speaker from it (`sourceLanguage`). The call ends a model
+  utterance; the reducer routes the speaker from it (`sourceLanguage`). It takes any BCP-47 code,
+  not an enum of the setup's languages (an enum made Hindi in an English and French session come
+  back as "<no speech detected>"); the translator maps the report onto the languages table with
+  `normaliseLanguage` (exact code, else primary subtag, else language name, else kept as is).
+  The call ends a model
   turn of its own, so the translator swallows that turn's `turnComplete`. It adds no noticeable
   delay. Identifying the language from the transcript text was tried and dropped: trigram
   detection gets short phrases wrong ("Merci beaucoup").
@@ -268,8 +275,9 @@ real `gemini-3.8-live` sessions with `bun run e2e:live`.
 - Tokens work on `v1beta`, although the SDK warns they are `v1alpha` only.
 - Gemini Live's voice detection ignores robotic synthetic voices (espeak); the test fixtures are
   spoken by `gemini-3.8-flash-tts`.
-- For noise the model may speak a placeholder such as "<no speech detected>" instead of staying
-  silent. Not fixed yet.
+- For noise or echo the model may answer with a stage direction such as "<no speech detected>" or
+  "<no speech>{pause}" instead of staying silent. The prompt forbids it; the app ignores it (see
+  Noise below).
 
 **From the docs, as built:**
 
@@ -293,11 +301,19 @@ real `gemini-3.8-live` sessions with `bun run e2e:live`.
   for any pause over a second.
 - **Language signal**: the reference documents `languageCode` (BCP-47) on
   `BidiGenerateContentTranscription`, for input and output transcripts, and
-  `inputAudioTranscription.languageCodes` as hints (Vorp sends the participants' languages). The
-  guide pages never mention it, so whether `gemini-3.8-live` fills it is unverified. Routing:
-  held button, else input `languageCode`, else (two people) the participant whose language
-  differs from the output transcript's `languageCode`, else unknown. In practice neither is
-  filled; see `report_language` above.
+  `inputAudioTranscription.languageCodes` as hints (Vorp sends the owner's and the picked
+  language). The guide pages never mention it, so whether `gemini-3.8-live` fills it is
+  unverified. **Routing** (owner, 21 November 2026): a held button, else a voice verdict
+  (`speakerRecognised`, `routedBy: 'voice'`; the seam for speaker recognition, which nothing sends
+  yet), else the language: the owner's language is the owner, any other is the other person. The
+  language comes from `report_language`, else the input `languageCode`; with neither, a reply in
+  the owner's language means the other person spoke. Language reports on the other person's
+  utterances (not in the owner's language) set `otherLanguage`, which the UI shows and which a
+  new conversation or setup clears.
+- **Auto-detect is a prompt rule.** The Live API takes the system instruction only at setup, so
+  the prompt tells the model: the owner's speech goes into the language the other person spoke
+  most recently, the picked one until they have spoken; with auto-detect off, always the picked
+  one. `theirLanguage(session)` is the reducer's view of the same rule.
 - **Speech start / end events**: the reference documents a top-level `voiceActivity`
   (`type: ACTIVITY_START | ACTIVITY_END`); the SDK passes Gemini API messages through raw. If it
   does not arrive, an utterance opens on its first input transcript and ends on the first model
@@ -367,7 +383,7 @@ real `gemini-3.8-live` sessions with `bun run e2e:live`.
   declaration. `SessionSettings` carries the chosen ids to the translator; the reducer does not
   read them. Cultural notes use the `add_note` tool: the note arrives as a `note` event and lands
   on the utterance being answered; it is shown under the caption and never spoken.
-- **The setup changes only between sessions**, with one `configure` event (participants and
+- **The setup changes only between sessions**, with one `configure` event (people and
   settings). The Live API takes the system instruction, tools and voice at session setup.
 - **A conversation is archived when it stops or fails** (`archive` effect, only if something was
   heard; a failure also releases the microphone and the socket),
@@ -384,8 +400,10 @@ real `gemini-3.8-live` sessions with `bun run e2e:live`.
   `config/demo.ts`): recorded voices play through the real audio output, so the ring, the mouth,
   the wave and the glow all run as they do live. It needs no microphone, network or key, ends
   after its last line and shows a canned recap. It keeps nothing.
-- **Noise**: a reply that is only a bracketed stage direction ("<no speech detected>") is not a
-  caption (`stage.ts`), and the prompt tells the model to produce nothing for noise.
+- **Noise**: a reply made only of bracketed `<...>` / `{...}` tokens is not a translation
+  (`isPlaceholder` in `core/session.ts`, the one definition). `wasHeard` rejects it, so it is not
+  a caption, a transcript line, a history line or recap input; history read from storage drops
+  such lines too. The prompt tells the model to produce nothing for noise.
 - **Brand**: the mark is the voice ring as two strokes in its own spectrum (`assets/brand`, with
   its README). App icons, favicon and splash are generated from it.
 - **Glass** (owner, 21 November 2026): wubble's coloured frost (`src/ui/tokens/glass.ts`, the
@@ -398,12 +416,15 @@ real `gemini-3.8-live` sessions with `bun run e2e:live`.
 
 ### Conversation
 
-- **One shared device**: one microphone, one speaker, placed between the participants.
-- **Two people must work flawlessly; three is best effort.** The data model is N-person from the
-  start. With three languages the translation is spoken once per other language, in turn.
+- **One owner's device** (owner, 21 November 2026): one microphone, one speaker, between the
+  owner and one other person. Exactly two roles, `owner` and `other` (`People` in
+  `core/session.ts`); three-person mode is gone.
+- **Auto-detect their language** is a setting, on by default (`autoDetect` in
+  `SessionSettings`). On: the owner's speech goes into the language the other person last spoke,
+  the picked one until they speak. Off: always the picked one.
 - **Hands-free with a fallback.** Voice activity detection ends the turn; the detected language
-  identifies the speaker and the direction. A per-person button stays available for noisy rooms
-  and for participants who share a language.
+  identifies the speaker and the direction. A hold-to-talk button stays available for noisy rooms;
+  the current stage shows one for each role. Speaker recognition (a voiceprint) is phase 2.
 - **Overlap policy: keep talking, queue the next.** Vorp finishes the current translation while
   capturing new speech, then speaks the next one in order. The policy is a value in a table, so
   ducking or barge-in can be added as rows (`OVERLAP_POLICIES` in `src/config/policies.ts`,
@@ -418,9 +439,11 @@ real `gemini-3.8-live` sessions with `bun run e2e:live`.
   `transition` emits `startCapture` / `stopCapture` when it changes.
 - **One interpreter voice first.** The build-out uses a single Gemini voice and one Live session
   (owner, 21 November 2026). A voice per person is wanted but comes after everything else works;
-  `Participant` carries a `voice` field from the start so adding it later is not a rewrite.
-- **Start in one tap.** The app opens on the stage with the last-used setup (default: two
-  people, English and French). Languages, voices and the people count are edited inline.
+  `Person` carries a `voice` field from the start so adding it later is not a rewrite.
+- **Start in one tap.** The app opens on the stage with the last-used setup (default: you
+  English, them French, auto-detect on). Snapshots from before the owner model map the first
+  saved participant to the owner and the second to the other; history entries the same way.
+  Languages and voices are edited inline.
 - **Languages**: everything the Live model supports, from one generated table, with English and
   French pinned first.
 
@@ -438,10 +461,11 @@ tool declaration. Turning one off removes its row's contribution; no feature cod
 ### Interface
 
 - **Orb stage with captions** is the main screen: the centre stage, the last few utterances as
-  caption cards below it, participant buttons at the bottom, and a button at the top that opens
+  caption cards below it, hold-to-talk buttons at the bottom, and a button at the top that opens
   the full **transcript page**.
 - **Centre stage**: the bot avatar inside the voice ring. The ring follows the microphone level
-  while listening and the output level while speaking, and leans toward the active speaker.
+  while listening and the output level while speaking, and leans toward the active speaker (the
+  owner on the left, the other person on the right).
   Thinking orbs take over while a translation is being produced.
 - **Golden glow** (border beam) marks the caption card being spoken.
 - **Distortion wave** carries the original caption card into its translation.

@@ -5,8 +5,9 @@ import {
   initialSession,
   transition,
   type Effect,
-  type Participant,
+  type People,
   type Pcm,
+  type Role,
   type Session,
   type SessionErrorKind,
   type SessionEvent,
@@ -33,13 +34,13 @@ function kindOf<K extends SessionErrorKind>(err: unknown, allowed: readonly K[],
 
 export function createRuntime(
   services: Services,
-  participants: Participant[],
+  people: People,
   settings: SessionSettings,
-  /** Called with each conversation that ends with something heard in it. */
-  onArchive: (participants: Participant[], utterances: Utterance[]) => void = () => {},
+  /** Called with each conversation that ends with something heard in it, and the languages spoken in it. */
+  onArchive: (languages: Record<Role, string>, utterances: Utterance[]) => void = () => {},
 ): Runtime {
   const { input, output, translator } = services;
-  const store = createStore(initialSession(participants, settings));
+  const store = createStore(initialSession(people, settings));
   /** The live microphone-to-translator pipe while the reducer says the microphone is open. */
   let pipe: (() => void) | null = null;
 
@@ -59,7 +60,7 @@ export function createRuntime(
   function run(effect: Effect) {
     switch (effect.type) {
       case 'connect':
-        translator.connect(effect.participants, effect.settings).then(
+        translator.connect(effect.people, effect.settings).then(
           () => dispatch({ type: 'connected' }),
           (err: unknown) =>
             dispatch({ type: 'connectFailed', kind: kindOf(err, ['token', 'socket'], 'socket'), message: message(err) }),
@@ -114,7 +115,7 @@ export function createRuntime(
         output.stop();
         return;
       case 'archive':
-        onArchive(effect.participants, effect.utterances);
+        onArchive(effect.languages, effect.utterances);
         return;
     }
   }

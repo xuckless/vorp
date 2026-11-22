@@ -17,6 +17,7 @@ import {
 
 import { INTERPRETER_MODEL, LIVE_API_VERSION, LIVE_AUDIO, LIVE_VAD } from '@/config/models';
 import { behaviourTools, NOTE_TOOL } from '@/config/behaviours';
+import { normaliseLanguage } from '@/config/languages';
 import { LANGUAGE_TOOL, interpreterPrompt, languageTool } from '@/config/prompts';
 import { INTERPRETER_VOICE } from '@/config/voices';
 import type { SessionSettings, TurnDetection } from '@/core/session';
@@ -37,6 +38,9 @@ function realtimeInput(settings: SessionSettings): RealtimeInputConfig {
     activityHandling: ACTIVITY_HANDLING[settings.overlap.speechDuringPlayback],
   };
 }
+
+/** A reported language as a table code; an empty report is no report. */
+const code = (language: string | undefined) => (language?.trim() ? normaliseLanguage(language) : undefined);
 
 /** The docs name the field `type`; the SDK types call it `voiceActivityType`. Read both. */
 function voiceActivity(msg: LiveServerMessage): string | undefined {
@@ -75,7 +79,8 @@ export function createTranslator(): Translator {
     if (calls.length > 0) {
       for (const call of calls) {
         const language = call.name === LANGUAGE_TOOL ? call.args?.language : undefined;
-        if (typeof language === 'string') emit({ type: 'sourceLanguage', language });
+        const reported = typeof language === 'string' ? code(language) : undefined;
+        if (reported) emit({ type: 'sourceLanguage', language: reported });
         const note = call.name === NOTE_TOOL ? call.args?.note : undefined;
         if (typeof note === 'string' && note.trim() !== '') emit({ type: 'note', text: note.trim() });
       }
@@ -91,12 +96,12 @@ export function createTranslator(): Translator {
     if (content) {
       const input = content.inputTranscription;
       if (input?.text || input?.finished) {
-        emit({ type: 'inputTranscript', text: input.text ?? '', language: input.languageCode, finished: input.finished });
+        emit({ type: 'inputTranscript', text: input.text ?? '', language: code(input.languageCode), finished: input.finished });
       }
       const output = content.outputTranscription;
       if (output?.text) {
         turn = observe(turn, { output: true });
-        emit({ type: 'outputTranscript', text: output.text, language: output.languageCode });
+        emit({ type: 'outputTranscript', text: output.text, language: code(output.languageCode) });
       }
       for (const part of content.modelTurn?.parts ?? []) {
         const data = part.inlineData?.data;
@@ -124,7 +129,7 @@ export function createTranslator(): Translator {
   }
 
   return {
-    async connect(participants, settings) {
+    async connect(people, settings) {
       const mine = ++generation;
       dropCurrent();
       detection = settings.detection;
@@ -149,12 +154,12 @@ export function createTranslator(): Translator {
         model: INTERPRETER_MODEL,
         config: {
           responseModalities: [Modality.AUDIO],
-          systemInstruction: interpreterPrompt(participants, settings),
-          tools: [{ functionDeclarations: [languageTool(participants), ...behaviourTools(settings.behaviours)] }],
-          // One interpreter voice: the first participant's.
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: participants[0]?.voice ?? INTERPRETER_VOICE } } },
-          // The participants' languages as hints; the transcript reports the detected one.
-          inputAudioTranscription: { languageCodes: [...new Set(participants.map((p) => p.language))] },
+          systemInstruction: interpreterPrompt(people, settings),
+          tools: [{ functionDeclarations: [languageTool, ...behaviourTools(settings.behaviours)] }],
+          // One interpreter voice: the owner's choice.
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: people.owner.voice || INTERPRETER_VOICE } } },
+          // The owner's and the picked language as hints; the transcript reports the detected one.
+          inputAudioTranscription: { languageCodes: [...new Set([people.owner.language, people.other.language])] },
           outputAudioTranscription: {},
           realtimeInputConfig: realtimeInput(settings),
           contextWindowCompression: { slidingWindow: {} },

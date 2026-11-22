@@ -1,12 +1,11 @@
-// A whole conversation, both languages, with its notes and its recap. Each person's side of
-// the page is their seat, so who spoke is carried by position, not by a label. Each line is a
+// A whole conversation, both languages, with its notes and its recap. The owner's lines are on
+// the left and the other person's on the right, so who spoke is carried by position, not by a label. Each line is a
 // bubble of tinted glass in its speaker's hue.
 
 import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { languageName } from '@/config/languages';
 import { asText, type Conversation } from '@/features/history/history';
 import { Glass, Press } from '@/ui/primitives';
 import { TOUCH_TARGET, useTheme } from '@/ui/tokens';
@@ -32,12 +31,10 @@ export function Transcript({ conversation, onClose, onDelete }: { conversation: 
           <View style={{ gap: theme.space.md }}>
             {c.lines.length === 0 ? <Text style={muted}>Nothing said yet</Text> : null}
             {c.lines.map((line, i) => {
-              const speakerIndex = c.participants.findIndex((p) => p.id === line.speakerId);
-              const right = speakerIndex > 0;
-              const speaker = c.participants[speakerIndex];
+              const right = line.speaker === 'other';
               // The bubble is tinted with its speaker's hue, and its corner nearest the speaker's
               // side is tighter, so the bubble points at its seat.
-              const tint = theme.color.participants[Math.max(speakerIndex, 0) % theme.color.participants.length];
+              const tint = theme.color.participants[right ? 1 : 0];
               const corner = right
                 ? { borderBottomRightRadius: theme.radius.sm }
                 : { borderBottomLeftRadius: theme.radius.sm };
@@ -52,9 +49,6 @@ export function Transcript({ conversation, onClose, onDelete }: { conversation: 
                     corner,
                   ]}
                 >
-                  {c.participants.length > 2 && speaker ? (
-                    <Text style={[muted, { fontSize: 13, lineHeight: 18 }]}>{languageName(speaker.language)}</Text>
-                  ) : null}
                   <Text style={text}>{line.source}</Text>
                   {line.translation ? <Text style={muted}>{line.translation}</Text> : null}
                   {line.note ? <Text style={[muted, { fontSize: 15, lineHeight: 22 }]}>{line.note}</Text> : null}

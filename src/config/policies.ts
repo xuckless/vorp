@@ -24,6 +24,9 @@ export const FLAGS = {
 /** Hands-free by default; 'manual' is push-to-talk only, for noisy rooms. */
 export const TURN_DETECTION: TurnDetection = 'auto';
 
+/** Follow the language the other person actually speaks, rather than only the picked one. */
+export const AUTO_DETECT = true;
+
 /** Share of a captured transcript's words found in the spoken translation that marks an echo. */
 export const ECHO_MATCH = 0.6;
 
@@ -36,4 +39,5 @@ export const DEFAULT_SETTINGS: SessionSettings = {
   echoMatch: ECHO_MATCH,
   tone: DEFAULT_TONE,
   behaviours: DEFAULT_BEHAVIOURS,
+  autoDetect: AUTO_DETECT,
 };

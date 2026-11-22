@@ -1,29 +1,39 @@
 // The conversation as one state value and one pure transition function.
 // No React, no I/O, no imports from other folders.
 
-export type ParticipantId = string;
 export type UtteranceId = string;
 
-export type Participant = {
-  id: ParticipantId;
-  name: string;
-  /** BCP-47 code from the languages table. */
+/**
+ * Vorp is one owner's interpreter. The owner ("you") has a native language and hears
+ * everything in it; the other person ("them") is spoken to in the language the owner picked,
+ * or, with auto-detect, in the language they last spoke.
+ */
+export type Role = 'owner' | 'other';
+
+export type Person = {
+  /** BCP-47 code from the languages table: the owner's own, or the one picked for the other person. */
   language: string;
   /** Voice name from the voices table. One interpreter voice is used for now. */
   voice: string;
 };
 
+export type People = Record<Role, Person>;
+
 export type UtteranceStatus = 'capturing' | 'translating' | 'queued' | 'speaking' | 'done' | 'failed';
 
-/** What decided who spoke: a held talk button, or the language the speech was detected in. */
-export type RoutedBy = 'button' | 'language';
+/**
+ * What decided who spoke, strongest first: a held talk button, a voice verdict (speaker
+ * recognition, a later phase; the runner sends `speakerRecognised`), or the language the speech
+ * was detected in (the owner's language is the owner, any other is the other person).
+ */
+export type RoutedBy = 'button' | 'voice' | 'language';
 
 export type Utterance = {
   id: UtteranceId;
-  /** Unknown until the detected language (or a held button) names the speaker. */
-  speakerId?: ParticipantId;
+  /** Unknown until the detected language (or a held button, or a voice verdict) names the speaker. */
+  speaker?: Role;
   routedBy: RoutedBy;
-  /** BCP-47 code the input transcript was detected in, when the server reports one. */
+  /** BCP-47 code of what was said: the interpreter's report, else the input transcript's. */
   language?: string;
   status: UtteranceStatus;
   /** What the speaker said (input transcript). */
@@ -69,13 +79,18 @@ export type SessionSettings = {
   /** Tone row id and behaviour row ids from the config tables. Carried to the translator; the reducer does not read them. */
   tone: string;
   behaviours: readonly string[];
+  /**
+   * On: the owner's speech goes into the language the other person last spoke (the picked one
+   * until they have spoken). Off: always into the picked language.
+   */
+  autoDetect: boolean;
 };
 
 export type SessionErrorKind = 'micDenied' | 'mic' | 'token' | 'socket' | 'timeLimit';
 export type SessionError = { kind: SessionErrorKind; message: string };
 
 export type Session = {
-  participants: Participant[];
+  people: People;
   settings: SessionSettings;
   connection: ConnectionStatus;
   /** Oldest first. */
@@ -86,8 +101,13 @@ export type Session = {
    * the tail is the newest input.
    */
   awaitingResponse: UtteranceId[];
-  /** The participant holding a talk button, if any. */
-  held?: ParticipantId;
+  /** Who is holding a talk button, if anyone. */
+  held?: Role;
+  /**
+   * The language the other person last spoke in this conversation, from the interpreter's
+   * reports. Unset until they speak; a new conversation or a new setup clears it.
+   */
+  otherLanguage?: string;
   nextId: number;
   error?: SessionError;
 };
@@ -99,19 +119,24 @@ export type SessionEvent =
   | { type: 'start' }
   | { type: 'stop' }
   /** Replace the setup. Only between sessions: a live session was opened for the old one. */
-  | { type: 'configure'; participants: Participant[]; settings: SessionSettings }
+  | { type: 'configure'; people: People; settings: SessionSettings }
   | { type: 'connected' }
   | { type: 'connectFailed'; kind: 'token' | 'socket'; message: string }
   | { type: 'connectionLost'; kind: 'socket' | 'timeLimit'; message: string }
   | { type: 'audioFailed'; kind: 'micDenied' | 'mic'; message: string }
-  | { type: 'pressTalk'; speakerId: ParticipantId }
-  | { type: 'releaseTalk'; speakerId: ParticipantId }
+  | { type: 'pressTalk'; speaker: Role }
+  | { type: 'releaseTalk'; speaker: Role }
   | { type: 'speechStarted' }
   | { type: 'speechEnded' }
   | { type: 'inputTranscript'; text: string; language?: string; finished?: boolean }
   | { type: 'outputTranscript'; text: string; language?: string }
   /** The interpreter reports the language of the utterance it is answering. */
   | { type: 'sourceLanguage'; language: string }
+  /**
+   * A voice verdict on the speech being captured (else the newest sent turn). Seam for speaker
+   * recognition; nothing sends it yet. Overrides language routing, never a held button.
+   */
+  | { type: 'speakerRecognised'; speaker: Role }
   /** A caption-only note on the utterance being answered. */
   | { type: 'note'; text: string }
   | { type: 'outputAudio'; pcm: Pcm }
@@ -121,7 +146,7 @@ export type SessionEvent =
   | { type: 'playbackFinished'; utteranceId: UtteranceId };
 
 export type Effect =
-  | { type: 'connect'; participants: Participant[]; settings: SessionSettings }
+  | { type: 'connect'; people: People; settings: SessionSettings }
   | { type: 'disconnect' }
   | { type: 'openAudio' }
   | { type: 'closeAudio' }
@@ -137,12 +162,12 @@ export type Effect =
   | { type: 'finishPlayback'; utteranceId: UtteranceId }
   | { type: 'stopPlayback' }
   /** A conversation in which something was heard has ended; keep it. */
-  | { type: 'archive'; participants: Participant[]; utterances: Utterance[] };
+  | { type: 'archive'; languages: Record<Role, string>; utterances: Utterance[] };
 
 export type Transition = [Session, Effect[]];
 
-export function initialSession(participants: Participant[], settings: SessionSettings): Session {
-  return { participants, settings, connection: 'idle', utterances: [], awaitingResponse: [], nextId: 1 };
+export function initialSession(people: People, settings: SessionSettings): Session {
+  return { people, settings, connection: 'idle', utterances: [], awaitingResponse: [], nextId: 1 };
 }
 
 export const ACTIVE_STATUSES: readonly UtteranceStatus[] = ['capturing', 'translating', 'queued', 'speaking'];
@@ -176,11 +201,20 @@ export function replying(s: Session): boolean {
   return head !== undefined && head.status !== 'capturing';
 }
 
-/** The languages an utterance is being translated into. */
-export function targetLanguages(s: Session, u: Utterance): string[] {
-  const from = s.participants.find((p) => p.id === u.speakerId)?.language;
-  if (from === undefined) return [];
-  return [...new Set(s.participants.map((p) => p.language).filter((l) => !sameLanguage(l, from)))];
+/** The language the owner's speech goes into now: what the other person last spoke, with auto-detect. */
+export function theirLanguage(s: Session): string {
+  return (s.settings.autoDetect ? s.otherLanguage : undefined) ?? s.people.other.language;
+}
+
+/** The language an utterance is being translated into, once its speaker is known. */
+export function targetLanguage(s: Session, u: Utterance): string | undefined {
+  if (u.speaker === undefined) return undefined;
+  return u.speaker === 'owner' ? theirLanguage(s) : s.people.owner.language;
+}
+
+/** Who speaks a language: the owner's language is the owner, any other is the other person. */
+export function speakerOf(people: People, language: string): Role {
+  return sameLanguage(people.owner.language, language) ? 'owner' : 'other';
 }
 
 /** BCP-47 match, falling back to the primary subtag ('fr-FR' matches 'fr'). */
@@ -199,9 +233,28 @@ function words(text: string): string[] {
     .filter(Boolean);
 }
 
-/** Something a participant said: not silence, and not Vorp hearing itself. What a conversation keeps. */
+/** A complete stage-direction token: `<no speech detected>`, `{pause}`. */
+const TOKENS = /<[^<>]*>|\{[^{}]*\}/g;
+/** What is left of a token still streaming in: `<no spe`, `{pau`. */
+const OPEN_TOKEN = /^[<{][^<>{}]*$/;
+
+/**
+ * Whether a reply is not a translation but a stage direction. For noise or echo the model
+ * sometimes answers "<no speech detected>" or "<no speech>{pause}" instead of staying silent
+ * (seen live, 21 November 2026). Only bracketed `<...>` and `{...}` tokens count, nothing else;
+ * an empty reply is not a placeholder, it is no reply yet.
+ */
+export function isPlaceholder(translation: string): boolean {
+  const rest = translation.replace(TOKENS, '').trim();
+  return translation.trim() !== '' && (rest === '' || OPEN_TOKEN.test(rest));
+}
+
+/**
+ * Something a person said: not silence, not Vorp hearing itself, and not answered with a stage
+ * direction. What captions, the transcript, history and the recap keep.
+ */
 export function wasHeard(u: Utterance): boolean {
-  return u.source !== '' && u.error !== 'echo';
+  return u.source !== '' && u.error !== 'echo' && !isPlaceholder(u.translation);
 }
 
 /** How many finished translations, newest first, the echo guard still compares against. */
@@ -232,9 +285,9 @@ function find(s: Session, id: UtteranceId | undefined): Utterance | undefined {
   return id === undefined ? undefined : s.utterances.find((u) => u.id === id);
 }
 
-function openUtterance(s: Session, speakerId: ParticipantId | undefined, routedBy: RoutedBy): [Session, UtteranceId] {
+function openUtterance(s: Session, speaker: Role | undefined, routedBy: RoutedBy): [Session, UtteranceId] {
   const id = `u${s.nextId}`;
-  const utterance: Utterance = { id, speakerId, routedBy, status: 'capturing', source: '', translation: '' };
+  const utterance: Utterance = { id, speaker, routedBy, status: 'capturing', source: '', translation: '' };
   return [
     { ...s, nextId: s.nextId + 1, utterances: [...s.utterances, utterance], awaitingResponse: [...s.awaitingResponse, id] },
     id,
@@ -261,7 +314,8 @@ const RELEASE: Effect[] = [{ type: 'stopPlayback' }, { type: 'disconnect' }, { t
 function end(s: Session, connection: 'idle' | 'failed', reason: string, error: SessionError | undefined): Transition {
   const ended: Session = { ...failInFlight(s, reason), connection, error };
   const heard = ended.utterances.filter(wasHeard);
-  const archive: Effect[] = heard.length > 0 ? [{ type: 'archive', participants: s.participants, utterances: heard }] : [];
+  const languages = { owner: s.people.owner.language, other: theirLanguage(s) };
+  const archive: Effect[] = heard.length > 0 ? [{ type: 'archive', languages, utterances: heard }] : [];
   return [ended, [...RELEASE, ...archive]];
 }
 
@@ -270,21 +324,27 @@ function turnEnded(s: Session, u: Utterance): Session {
   return u.status === 'capturing' ? patch(s, u.id, () => ({ status: 'translating' })) : s;
 }
 
-/** Assign the speaker from the detected input language. A held button always wins. */
-function routeByInput(u: Utterance, participants: Participant[], language: string | undefined): Partial<Utterance> {
-  if (language === undefined || u.routedBy === 'button') return {};
-  const speaker = participants.find((p) => sameLanguage(p.language, language));
-  return { language, speakerId: speaker?.id ?? u.speakerId };
+/** Record the detected input language and, unless a button or a voice decided, the speaker from it. */
+function routeByInput(u: Utterance, people: People, language: string | undefined): Partial<Utterance> {
+  if (language === undefined) return {};
+  if (u.routedBy !== 'language') return { language };
+  return { language, speaker: speakerOf(people, language) };
 }
 
 /**
- * Fallback routing from the output language: with no input language, the speaker is the only
- * participant whose language differs from the translation's (exact for two people).
+ * Fallback routing from the output language, with no input language: a reply in the owner's
+ * language answers the other person, any other reply answers the owner.
  */
-function routeByOutput(u: Utterance, participants: Participant[], language: string | undefined): Partial<Utterance> {
-  if (language === undefined || u.routedBy === 'button' || u.speakerId !== undefined) return {};
-  const others = participants.filter((p) => !sameLanguage(p.language, language));
-  return others.length === 1 ? { speakerId: others[0].id } : {};
+function routeByOutput(u: Utterance, people: People, language: string | undefined): Partial<Utterance> {
+  if (language === undefined || u.routedBy !== 'language' || u.speaker !== undefined) return {};
+  return { speaker: speakerOf(people, language) === 'owner' ? 'other' : 'owner' };
+}
+
+/** The other person's language follows what they speak: a language report on their utterance. */
+function followOther(s: Session, id: UtteranceId): Session {
+  const u = find(s, id);
+  if (u?.speaker !== 'other' || u.language === undefined || sameLanguage(u.language, s.people.owner.language)) return s;
+  return { ...s, otherLanguage: u.language };
 }
 
 function step(s: Session, e: SessionEvent): Transition {
@@ -294,13 +354,13 @@ function step(s: Session, e: SessionEvent): Transition {
       // openAudio runs inside the user gesture that sent 'start', which browsers require.
       return [
         // A new conversation: the last one was archived when it stopped or failed.
-        { ...s, connection: 'connecting', error: undefined, utterances: [], awaitingResponse: [] },
-        [{ type: 'openAudio' }, { type: 'connect', participants: s.participants, settings: s.settings }],
+        { ...s, connection: 'connecting', error: undefined, utterances: [], awaitingResponse: [], otherLanguage: undefined },
+        [{ type: 'openAudio' }, { type: 'connect', people: s.people, settings: s.settings }],
       ];
 
     case 'configure':
       if (s.connection !== 'idle' && s.connection !== 'failed') return [s, []];
-      return [{ ...s, participants: e.participants, settings: e.settings }, []];
+      return [{ ...s, people: e.people, settings: e.settings, otherLanguage: undefined }, []];
 
     case 'stop':
       if (s.connection === 'idle') return [s, []];
@@ -330,7 +390,7 @@ function step(s: Session, e: SessionEvent): Transition {
         { ...next, connection: 'reconnecting', awaitingResponse: [], held: undefined, error: { kind: e.kind, message: e.message } },
         [
           ...partial.map((utteranceId) => ({ type: 'finishPlayback', utteranceId }) as const),
-          { type: 'connect', participants: s.participants, settings: s.settings },
+          { type: 'connect', people: s.people, settings: s.settings },
         ],
       ];
     }
@@ -343,18 +403,17 @@ function step(s: Session, e: SessionEvent): Transition {
 
     case 'pressTalk': {
       if (s.connection !== 'open' || s.held !== undefined) return [s, []];
-      if (!s.participants.some((p) => p.id === e.speakerId)) return [s, []];
       const current = capturingUtterance(s);
       // A held button overrides detection: it takes over the speech being captured, if any.
       const [next] =
         current === undefined
-          ? openUtterance(s, e.speakerId, 'button')
-          : [patch(s, current.id, () => ({ speakerId: e.speakerId, routedBy: 'button' as const }))];
-      return [{ ...next, held: e.speakerId }, [{ type: 'beginTurn' }]];
+          ? openUtterance(s, e.speaker, 'button')
+          : [patch(s, current.id, () => ({ speaker: e.speaker, routedBy: 'button' as const }))];
+      return [{ ...next, held: e.speaker }, [{ type: 'beginTurn' }]];
     }
 
     case 'releaseTalk': {
-      if (s.held !== e.speakerId) return [s, []];
+      if (s.held !== e.speaker) return [s, []];
       const u = capturingUtterance(s);
       const released = { ...s, held: undefined };
       const next = u === undefined ? released : patch(released, u.id, () => ({ status: 'translating' }));
@@ -382,9 +441,9 @@ function step(s: Session, e: SessionEvent): Transition {
         if (s.connection !== 'open' || s.settings.detection !== 'auto') return [s, []];
         [next, id] = openUtterance(s, s.held, s.held === undefined ? 'language' : 'button');
       }
-      next = patch(next, id, (u) => ({ source: u.source + e.text, ...routeByInput(u, s.participants, e.language) }));
+      next = followOther(patch(next, id, (u) => ({ source: u.source + e.text, ...routeByInput(u, s.people, e.language) })), id);
       const u = find(next, id)!;
-      if (u.routedBy === 'language' && (u.status === 'capturing' || u.status === 'translating')) {
+      if (u.routedBy !== 'button' && (u.status === 'capturing' || u.status === 'translating')) {
         const others = next.utterances.filter((o) => o.id !== u.id);
         // Held microphone audio reaches the server after the reply, so the echo of a short
         // translation can arrive once it has finished playing: check the latest ones too.
@@ -408,7 +467,7 @@ function step(s: Session, e: SessionEvent): Transition {
       if (u === undefined || u.status === 'failed') return [s, []];
       const next = patch(turnEnded(s, u), u.id, (v) => ({
         translation: v.translation + e.text,
-        ...routeByOutput(v, s.participants, e.language),
+        ...routeByOutput(v, s.people, e.language),
       }));
       return [next, []];
     }
@@ -423,7 +482,14 @@ function step(s: Session, e: SessionEvent): Transition {
       // Part of the model's reply, so it belongs to the utterance being answered.
       const u = find(s, headId(s));
       if (u === undefined || u.status === 'failed') return [s, []];
-      return [patch(s, u.id, (v) => routeByInput(v, s.participants, e.language)), []];
+      return [followOther(patch(s, u.id, (v) => routeByInput(v, s.people, e.language)), u.id), []];
+    }
+
+    case 'speakerRecognised': {
+      const id = inputOwnerId(s);
+      const u = find(s, id);
+      if (u === undefined || u.status === 'failed' || u.routedBy === 'button') return [s, []];
+      return [followOther(patch(s, u.id, () => ({ speaker: e.speaker, routedBy: 'voice' as const })), u.id), []];
     }
 
     case 'outputAudio': {

@@ -5,11 +5,8 @@ import type { Utterance } from '@/core/session';
 
 import { added, asText, HISTORY_LIMIT, loadHistory, recapped, toConversation } from './history';
 
-const people = [
-  { id: 'a', name: 'A', language: 'en', voice: 'Charon' },
-  { id: 'b', name: 'B', language: 'fr', voice: 'Charon' },
-];
-const said = (source: string, translation: string): Utterance => ({ id: source, speakerId: 'a', routedBy: 'language', status: 'done', source, translation });
+const people = { owner: 'en', other: 'fr' };
+const said = (source: string, translation: string): Utterance => ({ id: source, speaker: 'owner', routedBy: 'language', status: 'done', source, translation });
 
 test('a conversation keeps what was heard, as text', () => {
   const c = toConversation('c1', 1, people, [said('Hello', 'Bonjour'), said('', '')]);
@@ -48,4 +45,35 @@ test('history survives a reload, and an unfinished recap is marked failed', asyn
   const second = await loadHistory(storage);
   expect(second.store.get()[0].recap).toEqual({ status: 'failed' });
   expect(recapped(second.store.get(), 'c1', { status: 'ready', text: { English: 'Hi' } })[0].recap.status).toBe('ready');
+});
+
+test('an answer that is only a stage direction is not kept', () => {
+  const c = toConversation('c1', 1, people, [said('die', '<no speech>{pause}'), said('Hello', 'Bonjour')]);
+  expect(asText(c)).toEqual(['Hello / Bonjour']);
+});
+
+test('a conversation saved before the owner model is read with the first seat as the owner', async () => {
+  const old = {
+    id: 'c0',
+    endedAt: 1,
+    participants: [
+      { id: 'p1', language: 'en' },
+      { id: 'p2', language: 'fr' },
+    ],
+    lines: [
+      { speakerId: 'p2', source: 'Bonjour', translation: 'Hello' },
+      { speakerId: 'p1', source: 'die', translation: '<no speech>{pause}' },
+      { speakerId: 'p1', source: 'Thanks', translation: 'Merci' },
+    ],
+    recap: { status: 'none' },
+  };
+  const kept = new Map([['vorp.history.v1', JSON.stringify([old])]]);
+  const storage = { get: async (k: string) => kept.get(k) ?? null, set: async (k: string, v: string) => void kept.set(k, v) };
+  const [c] = (await loadHistory(storage)).store.get();
+  expect(c.languages).toEqual({ owner: 'en', other: 'fr' });
+  expect(c.lines).toEqual([
+    { speaker: 'other', source: 'Bonjour', translation: 'Hello' },
+    { speaker: 'owner', source: 'Thanks', translation: 'Merci' },
+  ]);
+  expect(c).not.toHaveProperty('participants');
 });

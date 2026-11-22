@@ -29,9 +29,10 @@ export async function loadSetup(storage: KeyValueStorage): Promise<Setup> {
 export function keepSaved(storage: KeyValueStorage, session: Store<Session>): () => void {
   let last = '';
   const save = () => {
-    const { participants, settings } = session.get();
+    const { people, settings } = session.get();
     const saved: Saved<SlotChoices> = {
-      participants,
+      people,
+      autoDetect: settings.autoDetect,
       detection: settings.detection,
       pauseMicWhileSpeaking: settings.pauseMicWhileSpeaking,
       tone: settings.tone,

@@ -112,3 +112,21 @@ export type LanguageCode = (typeof LANGUAGES)[number]['code'];
 export function languageName(code: string): string {
   return LANGUAGES.find((l) => l.code === code)?.name ?? code;
 }
+
+const primary = (code: string) => code.toLowerCase().split(/[-_]/)[0];
+
+/**
+ * A language the interpreter reported, as a code from this table where one fits: the exact code
+ * (any case, `_` or `-`), else the first entry with the same primary subtag ('fr-FR' is 'fr',
+ * 'zh' is 'zh-Hans'), else an entry of that name ('Hindi'). Anything else is kept as reported,
+ * trimmed, so a language missing from the table still routes as "not the owner's".
+ */
+export function normaliseLanguage(reported: string): string {
+  const raw = reported.trim();
+  const code = raw.replace(/_/g, '-').toLowerCase();
+  const match =
+    LANGUAGES.find((l) => l.code.toLowerCase() === code) ??
+    LANGUAGES.find((l) => primary(l.code) === primary(code)) ??
+    LANGUAGES.find((l) => l.name.toLowerCase() === raw.toLowerCase());
+  return match?.code ?? raw;
+}

@@ -1,28 +1,38 @@
 /// <reference types="bun" />
 import { expect, test } from 'bun:test';
 
-import { DEFAULT_PARTICIPANTS } from './conversation';
-import { interpreterPrompt } from './prompts';
+import { DEFAULT_PEOPLE } from './conversation';
+import { interpreterPrompt, languageTool } from './prompts';
 
-test('the interpreter prompt names both directions and forbids answering', () => {
-  const prompt = interpreterPrompt(DEFAULT_PARTICIPANTS, { tone: 'neutral', behaviours: [] });
-  expect(prompt).toContain('When you hear English, say it in French.');
-  expect(prompt).toContain('When you hear French, say it in English.');
+const plain = { tone: 'neutral', behaviours: [], autoDetect: true };
+
+test('anything not in the owner language is interpreted into it, and nothing is answered', () => {
+  const prompt = interpreterPrompt(DEFAULT_PEOPLE, plain);
+  expect(prompt).toContain('The owner speaks English.');
+  expect(prompt).toContain('When you hear any language other than English, the other person is speaking: say it in English');
   expect(prompt).toContain('Never answer');
 });
 
-test('three languages list every other language', () => {
-  const prompt = interpreterPrompt([
-    ...DEFAULT_PARTICIPANTS,
-    { id: 'p3', name: 'Spanish speaker', language: 'es', voice: 'Charon' },
-  ], { tone: 'neutral', behaviours: [] });
-  expect(prompt).toContain('When you hear Spanish, say it in English, then in French.');
+test('with auto-detect the owner is interpreted into what the other person last spoke', () => {
+  const prompt = interpreterPrompt(DEFAULT_PEOPLE, plain);
+  expect(prompt).toContain('the language the other person spoke most recently');
+  expect(prompt).toContain('Until the other person has spoken, say it in French.');
+});
+
+test('without auto-detect the owner is always interpreted into the picked language', () => {
+  const prompt = interpreterPrompt(DEFAULT_PEOPLE, { ...plain, autoDetect: false });
+  expect(prompt).toContain('When you hear English, the owner is speaking: say it in French.');
+  expect(prompt).not.toContain('most recently');
+});
+
+test('the language report takes any language, not a list of the setup', () => {
+  expect(languageTool.parametersJsonSchema.properties.language).not.toHaveProperty('enum');
 });
 
 test('tone and behaviours add their rules, and only when chosen', () => {
-  const plain = interpreterPrompt(DEFAULT_PARTICIPANTS, { tone: 'neutral', behaviours: [] });
-  const full = interpreterPrompt(DEFAULT_PARTICIPANTS, { tone: 'formal', behaviours: ['culturalNotes', 'recap'] });
-  expect(plain).not.toContain('add_note');
+  const none = interpreterPrompt(DEFAULT_PEOPLE, plain);
+  const full = interpreterPrompt(DEFAULT_PEOPLE, { ...plain, tone: 'formal', behaviours: ['culturalNotes', 'recap'] });
+  expect(none).not.toContain('add_note');
   expect(full).toContain('add_note');
   expect(full).toContain('formal, polite register');
 });

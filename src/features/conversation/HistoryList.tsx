@@ -25,7 +25,7 @@ export function HistoryList({ open, conversations, onOpen, onClose }: { open: bo
               {c.lines[0]?.source}
             </Text>
             <Text style={muted}>
-              {c.participants.map((p) => languageName(p.language)).join(', ')} · {when(c.endedAt)}
+              {[c.languages.owner, c.languages.other].map(languageName).join(', ')} · {when(c.endedAt)}
             </Text>
           </Press>
         ))}

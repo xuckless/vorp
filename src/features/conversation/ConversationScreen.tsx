@@ -1,14 +1,14 @@
 // The stage: one luminous object and plain text. The voice ring with the interpreter's avatar
-// inside it, the caption being spoken under it, and one control per person. Renders from the
+// inside it, the caption being spoken under it, and one control per person (you and them). Renders from the
 // session store; local state is only the runtime handle and which overlay is open.
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Image, StyleSheet, Text, useWindowDimensions, View, type TextStyle } from 'react-native';
 
-import { DEMO_PARTICIPANTS } from '@/config/demo';
+import { DEMO_PEOPLE } from '@/config/demo';
 import { languageName } from '@/config/languages';
 import { DEFAULT_SETTINGS } from '@/config/policies';
-import type { ConnectionStatus, Participant, ParticipantId, Session, SessionErrorKind, Utterance } from '@/core/session';
+import { theirLanguage, type ConnectionStatus, type Role, type Session, type SessionErrorKind, type Utterance } from '@/core/session';
 import { asText, createHistory, toConversation, type History } from '@/features/history/history';
 import { keepSaved } from '@/features/settings/saved';
 import { createDemoServices, createServices, type Services } from '@/services';
@@ -27,6 +27,10 @@ import { Transcript } from './Transcript';
 import type { Boot, Mode } from './Vorp';
 
 const MARK = require('../../../assets/brand/mark.png');
+
+/** The owner first, on the left. */
+const ROLES: readonly Role[] = ['owner', 'other'];
+const ROLE_LABEL: Record<Role, string> = { owner: 'You', other: 'Them' };
 
 const START_LABEL: Record<Mode, Record<ConnectionStatus, string>> = {
   live: { idle: 'Start', connecting: 'Connecting', open: 'Stop', reconnecting: 'Reconnecting', failed: 'Try again' },
@@ -70,11 +74,11 @@ function statusText(stage: Stage, session: Session, mode: Mode): string {
     case 'listening':
       return session.settings.detection === 'auto' ? 'Listening' : 'Hold a button to talk';
     case 'hearing':
-      return stage.languages?.length ? `Hearing ${stage.languages.map(languageName).join(' and ')}` : 'Hearing';
+      return stage.language ? `Hearing ${languageName(stage.language)}` : 'Hearing';
     case 'translating':
       return 'Translating';
     case 'speaking':
-      return stage.languages?.length ? `Speaking ${stage.languages.map(languageName).join(' and ')}` : 'Speaking';
+      return stage.language ? `Speaking ${languageName(stage.language)}` : 'Speaking';
   }
 }
 
@@ -92,17 +96,17 @@ function createController(mode: Mode, boot: Boot, onEnded: (id: string) => void)
   const services: Services = mode === 'demo' ? createDemoServices(() => runtime.dispatch({ type: 'stop' })) : createServices();
   // The demo keeps nothing: its history lives only as long as the demo is on screen.
   const history = mode === 'demo' ? createHistory([], () => {}) : boot.history;
-  const participants = mode === 'demo' ? DEMO_PARTICIPANTS : boot.setup.participants;
+  const people = mode === 'demo' ? DEMO_PEOPLE : boot.setup.people;
   const settings = mode === 'demo' ? DEFAULT_SETTINGS : boot.setup.settings;
 
-  const runtime = createRuntime(services, participants, settings, (people: Participant[], utterances: Utterance[]) => {
+  const runtime = createRuntime(services, people, settings, (languages: Record<Role, string>, utterances: Utterance[]) => {
     const now = Date.now();
-    const conversation = toConversation(String(now), now, people, utterances);
+    const conversation = toConversation(String(now), now, languages, utterances);
     history.add(conversation);
     if (!runtime.store.get().settings.behaviours.includes('recap')) return;
     history.setRecap(conversation.id, { status: 'writing' });
     onEnded(conversation.id);
-    services.recap.summarise([...new Set(people.map((p) => languageName(p.language)))], asText(conversation)).then(
+    services.recap.summarise([...new Set([languages.owner, languages.other].map(languageName))], asText(conversation)).then(
       (text) => history.setRecap(conversation.id, { status: 'ready', text }),
       () => history.setRecap(conversation.id, { status: 'failed' }),
     );
@@ -112,7 +116,7 @@ function createController(mode: Mode, boot: Boot, onEnded: (id: string) => void)
 
 export function ConversationScreen({ mode, autostart, boot, onMode }: { mode: Mode; autostart: boolean; boot: Boot; onMode: (mode: Mode) => void }) {
   // Which overlay is open: visual-only, so it lives here.
-  const [editing, setEditing] = useState<ParticipantId | null>(null);
+  const [editing, setEditing] = useState<Role | null>(null);
   const [reading, setReading] = useState<Reading>(null);
   const [browsing, setBrowsing] = useState(false);
   const [setting, setSetting] = useState(false);
@@ -151,7 +155,7 @@ export function ConversationScreen({ mode, autostart, boot, onMode }: { mode: Mo
     reading === null
       ? null
       : reading.from === 'live'
-        ? toConversation('live', 0, session.participants, heard)
+        ? toConversation('live', 0, { owner: session.people.owner.language, other: theirLanguage(session) }, heard)
         : (past.find((c) => c.id === reading.id) ?? null);
 
   return (
@@ -165,11 +169,14 @@ export function ConversationScreen({ mode, autostart, boot, onMode }: { mode: Mo
             </Text>
           </View>
           <View style={styles.links}>
-            {session.participants.map((p) => (
-              <Press key={p.id} disabled={!settable} accessibilityLabel={`${languageName(p.language)}, change language`} onPress={() => setEditing(p.id)} style={styles.link}>
-                <Text style={styles.linkText}>{languageName(p.language)}</Text>
-              </Press>
-            ))}
+            {ROLES.map((role) => {
+              const label = `${ROLE_LABEL[role]}: ${languageName(role === 'owner' ? session.people.owner.language : theirLanguage(session))}`;
+              return (
+                <Press key={role} disabled={!settable} accessibilityLabel={`${label}, change language`} onPress={() => setEditing(role)} style={styles.link}>
+                  <Text style={styles.linkText}>{label}</Text>
+                </Press>
+              );
+            })}
           </View>
         </View>
 
@@ -232,19 +239,19 @@ export function ConversationScreen({ mode, autostart, boot, onMode }: { mode: Mo
         <View style={styles.controls}>
           {open ? (
             <View style={styles.people}>
-              {session.participants.map((p) => {
-                const holding = session.held === p.id;
+              {ROLES.map((role) => {
+                const holding = session.held === role;
                 const enabled = session.held === undefined || holding;
                 return (
                   <Press
-                    key={p.id}
-                    accessibilityLabel={`Hold to talk, ${languageName(p.language)}`}
+                    key={role}
+                    accessibilityLabel={`Hold to talk, ${ROLE_LABEL[role]}`}
                     disabled={!enabled || mode === 'demo'}
-                    onPressIn={() => dispatch({ type: 'pressTalk', speakerId: p.id })}
-                    onPressOut={() => dispatch({ type: 'releaseTalk', speakerId: p.id })}
+                    onPressIn={() => dispatch({ type: 'pressTalk', speaker: role })}
+                    onPressOut={() => dispatch({ type: 'releaseTalk', speaker: role })}
                     style={[styles.person, holding && styles.personHeld]}
                   >
-                    <Text style={[styles.personText, holding && styles.personTextHeld]}>{languageName(p.language)}</Text>
+                    <Text style={[styles.personText, holding && styles.personTextHeld]}>{ROLE_LABEL[role]}</Text>
                   </Press>
                 );
               })}
@@ -280,11 +287,12 @@ export function ConversationScreen({ mode, autostart, boot, onMode }: { mode: Mo
 
       <LanguagePicker
         open={editing !== null}
-        selected={session.participants.find((p) => p.id === editing)?.language}
+        selected={editing === null ? undefined : session.people[editing].language}
         onClose={() => setEditing(null)}
         onPick={(code) => {
-          const participants = session.participants.map((p) => (p.id === editing ? { ...p, language: code, name: `${languageName(code)} speaker` } : p));
-          dispatch({ type: 'configure', participants, settings: session.settings });
+          if (editing === null) return;
+          const people = { ...session.people, [editing]: { ...session.people[editing], language: code } };
+          dispatch({ type: 'configure', people, settings: session.settings });
           setEditing(null);
         }}
       />
