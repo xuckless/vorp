@@ -541,8 +541,9 @@ The client contract is `docs/pairing-protocol.md`; change it with the server.
   the owner's route loads it at once, the guest's page when they tap Join (the translator through
   `createLazyTranslator`). The guest page imports `@/ui/dom` files one by one, never the barrel.
   The aurora is `defer`red (starts when idle, fades in, skipped on save-data or a small phone).
-  The guest's voice filter (`GUEST_VOICE_FILTER`) loads the voiceprint model once its session
-  connects.
+  The guest's voice filter (`GUEST_VOICE_FILTER`) is off (owner, 22 November 2026): a stranger's
+  phone on venue Wi-Fi downloads nothing heavy; guests rely on mic and speaker taking turns, the
+  transcript guard and the prompt. On, it loads the voiceprint model once the session connects.
 - **Copy**: the guest's is the design's `pair-copy.ts`, as written (`config/pair-copy.ts`); the
   host reads its English. Host-only lines (end card, "Their phone lost its connection",
   "Couldn't make a code") are English in the screens.

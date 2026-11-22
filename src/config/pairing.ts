@@ -58,9 +58,10 @@ export const GUEST_VOICE = INTERPRETER_VOICE;
 /**
  * Whether the guest's phone runs Vorp's voice filter (the on-device voiceprint model, about 21 MB
  * of model and WASM, fetched once the conversation shows). The host always does. Mic and speaker
- * taking turns and the transcript guard work without it.
+ * taking turns and the transcript guard work without it. Off (owner, 22 November 2026): a
+ * stranger's phone on venue Wi-Fi should not download 21 MB mid-call.
  */
-export const GUEST_VOICE_FILTER = true;
+export const GUEST_VOICE_FILTER = false;
 
 /**
  * A paired phone's session settings from the owner's: the paired prompt row (one direction, the
