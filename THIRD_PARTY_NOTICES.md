@@ -18,3 +18,12 @@ copies and are not listed here; their licences ship with the packages.
   level that opens the mouth while the interpreter speaks (marked "Vorp" in `types.ts`,
   `BotAvatar.tsx` and `draw.ts`). Each
   folder's `index.ts` carries a source comment.
+
+## Wubble glass
+
+- **Source:** the owner's wubble design, `xuckless/the-wallpaper-project`
+  (`src/wubble/core/tokens.ts` `glass` and `src/wubble/core/wubble.css` `.wb-thin/.wb-regular/.wb-thick`,
+  commit `598f814`). The owner's own work, contributed to Vorp under Apache-2.0.
+- **Copied into:** `src/ui/tokens/glass.ts` (the tier values) and `src/ui/primitives/Glass.tsx`.
+- **Changes:** the neutral milk fill takes a tint; shadows are scaled down on the light theme;
+  the 3.5% top gradient is left out.
