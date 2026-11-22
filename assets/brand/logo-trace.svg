@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-8 -10 172 82" width="172" height="82">
+  <title>Vorp</title>
+  <!-- The app's header logo (src/ui/dom/Mark.tsx), standing still: "vorp" as a stroke of light
+       traced twice, its o the voice ring at rest. Spectrum as in README.md. -->
+  <defs>
+    <linearGradient id="spectrum" gradientUnits="userSpaceOnUse" x1="0" y1="56" x2="156" y2="-4">
+      <stop offset="0" stop-color="#4c8dff"/>
+      <stop offset="0.3" stop-color="#8f6bff"/>
+      <stop offset="0.7" stop-color="#f25cc4"/>
+      <stop offset="1" stop-color="#ffa24c"/>
+    </linearGradient>
+    <linearGradient id="loop" gradientUnits="userSpaceOnUse" x1="30" y1="42" x2="74" y2="-2">
+      <stop offset="0" stop-color="#4c8dff"/>
+      <stop offset="0.35" stop-color="#8f6bff"/>
+      <stop offset="0.7" stop-color="#f25cc4"/>
+      <stop offset="1" stop-color="#ffa24c"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="url(#spectrum)" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2 2 L15 40 L28 2 C31 0 33 2 35 8" stroke-width="6.5"/>
+    <path d="M2 2 L15 40 L28 2 C31 0 33 2 35 8" stroke-width="2.4" transform="translate(3.2 -3.4)" opacity=".85"/>
+    <path d="M67 6 C74 2 80 5 84 12 L84 40 L84 16 C88 6 96 1 104 3 C108 4 112 1 116 1 L116 64 L116 30 C116 8 130 0 136 0 C148 0 155 10 155 20 C155 32 146 40 136 40 C126 40 118 34 116 28" stroke-width="6.5"/>
+    <path d="M67 6 C74 2 80 5 84 12 L84 40 L84 16 C88 6 96 1 104 3 C108 4 112 1 116 1 L116 64 L116 30 C116 8 130 0 136 0 C148 0 155 10 155 20 C155 32 146 40 136 40 C126 40 118 34 116 28" stroke-width="2.4" transform="translate(3.2 -3.4)" opacity=".85"/>
+  </g>
+  <g fill="none" stroke="url(#loop)">
+    <circle cx="52" cy="20" r="20" stroke-width="12.8" opacity=".1"/>
+    <circle cx="52" cy="20" r="20" stroke-width="5.7"/>
+    <circle cx="52" cy="20" r="17.2" stroke-width="2.4"/>
+  </g>
+</svg>

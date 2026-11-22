@@ -30,6 +30,8 @@ only as the ring's light, never as a background.
 
 ## Files
 
+- `logo-trace.svg`: the app's header logo standing still ("vorp" traced twice in light, its o the
+  voice ring at rest); live in the app as `src/ui/dom/Mark.tsx`. Works on graphite and paper
 - `mark.svg`: the mark in spectrum, transparent
 - `mark-mono-light.svg`: graphite mark for light surfaces
 - `mark-mono-dark.svg`: ink mark for dark surfaces
