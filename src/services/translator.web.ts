@@ -21,6 +21,7 @@ import { LANGUAGE_TOOL, interpreterPrompt, languageTool } from '@/config/prompts
 import { INTERPRETER_VOICE } from '@/config/voices';
 import type { SessionSettings, TurnDetection } from '@/core/session';
 
+import { EMPTY_TURN, endsReply, observe } from './model-turn';
 import { base64ToPcm, pcmToBase64 } from './pcm';
 import { fetchLiveToken } from './token';
 import { ServiceError, type Translator, type TranslatorEvent } from './types';
@@ -50,8 +51,8 @@ export function createTranslator(): Translator {
   let generation = 0;
   let resumeHandle: string | undefined;
   let detection: TurnDetection = 'auto';
-  /** Tool-call turns whose turnComplete has not arrived yet. */
-  let toolTurns = 0;
+  /** What the current model turn has carried, to tell a tool-call turn from a reply. */
+  let turn = EMPTY_TURN;
 
   const emit = (e: TranslatorEvent) => listeners.forEach((l) => l(e));
 
@@ -80,7 +81,7 @@ export function createTranslator(): Translator {
       }
       // The model speaks the interpretation once the call returns. The call ends a model turn
       // of its own, whose turnComplete is not the end of the reply.
-      toolTurns++;
+      turn = observe(turn, { toolCall: true });
       live?.sendToolResponse({
         functionResponses: calls.map((call) => ({ id: call.id, name: call.name, response: { result: 'ok' } })),
       });
@@ -93,15 +94,22 @@ export function createTranslator(): Translator {
         emit({ type: 'inputTranscript', text: input.text ?? '', language: input.languageCode, finished: input.finished });
       }
       const output = content.outputTranscription;
-      if (output?.text) emit({ type: 'outputTranscript', text: output.text, language: output.languageCode });
+      if (output?.text) {
+        turn = observe(turn, { output: true });
+        emit({ type: 'outputTranscript', text: output.text, language: output.languageCode });
+      }
       for (const part of content.modelTurn?.parts ?? []) {
         const data = part.inlineData?.data;
-        if (data && part.inlineData?.mimeType?.startsWith('audio/')) emit({ type: 'outputAudio', pcm: base64ToPcm(data) });
+        if (data && part.inlineData?.mimeType?.startsWith('audio/')) {
+          turn = observe(turn, { output: true });
+          emit({ type: 'outputAudio', pcm: base64ToPcm(data) });
+        }
       }
       if (content.interrupted) emit({ type: 'interrupted' });
       if (content.turnComplete) {
-        if (toolTurns > 0) toolTurns--;
-        else emit({ type: 'turnComplete' });
+        const reply = endsReply(turn);
+        turn = EMPTY_TURN;
+        if (reply) emit({ type: 'turnComplete' });
       }
     }
 
@@ -120,7 +128,7 @@ export function createTranslator(): Translator {
       const mine = ++generation;
       dropCurrent();
       detection = settings.detection;
-      toolTurns = 0;
+      turn = EMPTY_TURN;
       const token = await fetchLiveToken().then(
         (t) => t.token,
         (err: unknown) => {
