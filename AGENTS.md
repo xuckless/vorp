@@ -42,7 +42,8 @@ bun run lint                 # ESLint
 bun run typecheck            # tsc --noEmit
 bun test                     # unit tests
 bun run token-server         # the Anole token server on :8787 (needs Zig 0.17; reads .env)
-bun run test:server          # the token server's routes, in memory
+bun run test:server          # the token server's routes (pairing over a loopback socket)
+                             # one group: cd server && zig build test -Dtest-filter=pairing
 bun run e2e:live             # by hand: recorded speech through the web build against real Gemini
 bun run smoke:voiceprint     # by hand: the voiceprint model on recorded voices, cosine scores
 bun run voiceprint:assets    # voiceprint runtime into public/voiceprint/ (web and export:web run it)
@@ -418,6 +419,62 @@ real `gemini-3.8-live` sessions with `bun run e2e:live`.
   bordered containers". On native there is no backdrop blur, only the fill and shadows.
 - **Primitives** (`src/ui/primitives`): `Press` (scale 0.97 while held), `Layer` (a popover that
   grows from its trigger, or a sheet that rises; exits 20% faster), `usePresence`, `transition`.
+
+### Pairing (22 November 2026)
+
+The client contract is `docs/pairing-protocol.md`; change it with the server.
+
+**Owner's decisions:**
+
+- Two phones in one live translation session for the booth demo. The host starts a paired
+  session from a second button on the Start page and shows a QR code; the guest scans it, picks
+  their native language and taps Join (the tap grants the microphone). Joining is by QR only, no
+  typed code.
+- Each phone runs its own Gemini Live session (tokens from `POST /token`) that translates its
+  owner's speech into the other person's language. The server only relays: translated audio,
+  captions (both sides) and control messages. Each person hears only the other, translated.
+- Either side's Stop ends it for both. One guest per code, a fresh code per session, unused
+  codes expire after 10 minutes, the code is single-use and unguessable.
+- The host keeps the conversation in History; the guest keeps nothing and is sent to the product
+  landing page.
+
+**Server design** (`server/src/pairing.zig`, `server/src/rooms.zig`):
+
+- `POST /rooms` makes a room: a 128-bit code (base64url, for the QR) and a host key (kept by the
+  host, never in a URL). `WS /rooms/:code` is one socket per phone; the first message is
+  `hello` with the role, the language and, for the host, its key. The guest's hello pairs the
+  room and spends the code; the host learns the guest's language from `peer_joined`, the guest
+  the host's from its `welcome`.
+- In memory only, one server instance. Room states are a pure value (`rooms.Registry`: every
+  call takes the time, so tests move a fake clock), under one mutex in `Pairing`. The relay is
+  Anole's `websocket.Rooms` (one room per code): a phone that stops reading fills only its own
+  1 MiB queue and is cut off. Sockets are Anole WebSocket callbacks.
+- **No timers.** Expiry is checked when something touches the room: a message from either side
+  (phones ping every 15 s), a hello, or the next `POST /rooms` (which sweeps every room and tells
+  waiting hosts `expired`).
+- **A drop is not an end** (added for the paired design's "Reconnecting to their phone"): a
+  paired side whose socket closes is away for up to 60 s; the peer gets `peer_away`, and the side
+  rejoins with its key (the guest's key comes in its `welcome`), the peer then getting
+  `peer_back`. A rejoin replaces a socket the server still holds (an epoch per side). Past 60 s
+  the room ends (`host_left` / `guest_left`). A waiting host that drops loses its code. Stop
+  always ends it for both.
+- **Relayed types** are the phones' own and the server reads only `type`: `speaking` (owner
+  talking or not, drives the playback hold), `turn` (talking, translating, ready, done, failed,
+  keyed by a turn id the sender assigns), `caption` (source or translation text as deltas),
+  `playback` (queued, playing with progress, heard, from the listener back to the speaker) and
+  binary frames of 24 kHz 16-bit PCM. Nothing is relayed before pairing or while the peer is
+  away.
+- **Bounds**: 64 KiB frames, 4 KiB text messages, a per-socket relay rate on Anole's memory
+  limiter (600 tokens a second, burst 3000, a message costing 1 plus 1 per KiB), 60-minute
+  sockets, `ROOM_RATE_LIMIT` (30 a minute per client, room creation and socket opens),
+  `ROOMS_PER_CLIENT` (10) and `MAX_ROOMS` (100). Ended rooms are remembered about 10 minutes so
+  a late scan hears `taken`, `expired` or `host_gone`, at most three per live-room slot.
+- The socket accepts any page origin (`allowed_origins = .any`): it carries no cookies, and the
+  code and keys admit it. Anole takes WebSocket upgrade options at compile time, so the runtime
+  `CORS_ORIGIN` cannot feed an origin list. `POST /rooms` uses the same CORS as `/token`.
+- WebSocket tests run over a loopback socket (as Anole's realtime template does): under
+  `anole.testing` a WebSocket callback route panics on a plain GET (`res._conn` is null), which
+  is reported upstream, not worked around.
 
 ### Conversation
 
