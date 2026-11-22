@@ -85,6 +85,12 @@ export type SessionSettings = {
    * until they have spoken). Off: always into the picked language.
    */
   autoDetect: boolean;
+  /**
+   * The prompt row the translator builds its system instruction from (`PROMPTS` in
+   * src/config/prompts.ts): the one-device interpreter when unset, 'paired' on a paired phone.
+   * Carried to the translator; the reducer does not read it.
+   */
+  prompt?: string;
 };
 
 export type SessionErrorKind = 'micDenied' | 'mic' | 'token' | 'socket' | 'timeLimit';
@@ -104,6 +110,12 @@ export type Session = {
   awaitingResponse: UtteranceId[];
   /** Set while the owner holds the talk button. Hold-to-talk is the owner's only. */
   held?: 'owner';
+  /**
+   * The microphone is closed from outside the conversation: a paired phone mutes it while it
+   * plays the other person's translation (mic and speaker take turns). A held button still
+   * opens it.
+   */
+  muted?: boolean;
   /**
    * The language the other person last spoke in this conversation, from the interpreter's
    * reports. Unset until they speak; the conversation ending (stopped or failed), a new
@@ -156,7 +168,9 @@ export type SessionEvent =
   | { type: 'interrupted' }
   | { type: 'turnComplete' }
   | { type: 'playbackStarted'; utteranceId: UtteranceId }
-  | { type: 'playbackFinished'; utteranceId: UtteranceId };
+  | { type: 'playbackFinished'; utteranceId: UtteranceId }
+  /** Close (or reopen) the microphone from outside; see `Session.muted`. */
+  | { type: 'mute'; muted: boolean };
 
 export type Effect =
   | { type: 'connect'; people: People; settings: SessionSettings }
@@ -204,6 +218,7 @@ export function playbackQueue(s: Session): Utterance[] {
 export function micOpen(s: Session): boolean {
   if (s.connection !== 'open') return false;
   if (s.held !== undefined) return true;
+  if (s.muted) return false;
   if (s.settings.detection === 'manual') return false;
   if (s.settings.pauseMicWhileSpeaking && s.utterances.some((u) => u.status === 'speaking')) return false;
   return true;
@@ -313,7 +328,7 @@ function headId(s: Session): UtteranceId | undefined {
 }
 
 /** The utterance new input transcript belongs to: the one capturing, else the newest sent turn. */
-function inputOwnerId(s: Session): UtteranceId | undefined {
+export function inputOwnerId(s: Session): UtteranceId | undefined {
   return capturingUtterance(s)?.id ?? s.awaitingResponse[s.awaitingResponse.length - 1];
 }
 
@@ -590,6 +605,9 @@ function step(s: Session, e: SessionEvent): Transition {
       if (u === undefined || (u.status !== 'queued' && u.status !== 'speaking')) return [s, []];
       return [patch(s, u.id, () => ({ status: 'done' })), []];
     }
+
+    case 'mute':
+      return [e.muted === !!s.muted ? s : { ...s, muted: e.muted }, []];
   }
 }
 

@@ -595,6 +595,27 @@ describe('pauseMicWhileSpeaking', () => {
   });
 });
 
+describe('muted from outside', () => {
+  test('muting closes the microphone and flushes the turn; unmuting opens it again', () => {
+    const [s, log] = run([...open, { type: 'mute', muted: true }, { type: 'mute', muted: false }], freshHandsFree());
+    expect(types(log[open.length])).toEqual(['stopCapture', 'endTurn']);
+    expect(types(log[open.length + 1])).toEqual(['startCapture']);
+    expect(micOpen(s)).toBe(true);
+  });
+
+  test('a held button still opens a muted microphone', () => {
+    const [s] = run([...open, { type: 'mute', muted: true }, { type: 'pressTalk', speaker: 'owner' }], freshHandsFree());
+    expect(micOpen(s)).toBe(true);
+  });
+
+  test('the same mute twice changes nothing', () => {
+    const [s] = run([...open, { type: 'mute', muted: true }], freshHandsFree());
+    const [again, effects] = transition(s, { type: 'mute', muted: true });
+    expect(again).toBe(s);
+    expect(effects).toEqual([]);
+  });
+});
+
 test('the setup changes between sessions, not during one', () => {
   const spanish: People = { ...people, other: { ...people.other, language: 'es' } };
   const [idle] = transition(freshHandsFree(), { type: 'configure', people: spanish, settings: manual });
