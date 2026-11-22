@@ -7,8 +7,11 @@
 //   and judged against the owner's print and Vorp's own.
 // - Vorp's own voice is learnt from the translations it plays (24 kHz, resampled to 16 kHz):
 //   the first `INTERPRETER_PRINT.clips` long enough are averaged into the interpreter's print.
+//   What is learnt is kept per interpreter voice in `prints` (on the device, embeddings only, see
+//   ./interpreter-prints.ts), so the next conversation with that voice filters echoes from its
+//   first reply.
 //
-// Nothing here is stored; the owner's print comes from enrolment through `ownerPrint`.
+// No audio is stored; the owner's print comes from enrolment through `ownerPrint`.
 
 import { INTERPRETER_PRINT, VOICE_CLIP, VOICE_THRESHOLDS, VOICEPRINT_MODEL } from '@/config/voiceprint';
 import { LIVE_AUDIO } from '@/config/models';
@@ -61,11 +64,21 @@ export function verdictEvent(verdict: VoiceVerdict, utteranceId: UtteranceId): S
 
 export type VoiceJudge = ReturnType<typeof createVoiceJudge>;
 
+/** Where the interpreter's learnt embeddings are kept, per interpreter voice. */
+export type InterpreterPrints = {
+  get: (voiceName: string) => readonly Embedding[];
+  set: (voiceName: string, embeddings: readonly Embedding[]) => void;
+};
+
+/** Nothing kept: every conversation learns Vorp's voice afresh (the demo, tests). */
+export const NO_PRINTS: InterpreterPrints = { get: () => [], set: () => {} };
+
 export function createVoiceJudge(
   voice: VoiceEmbedder,
   /** The owner's enrolled voiceprint, if any; read at each verdict. */
   ownerPrint: () => Embedding | undefined,
   dispatch: (event: SessionEvent) => void,
+  prints: InterpreterPrints = NO_PRINTS,
 ) {
   const sent = createClipBuffer(VOICE_CLIP.maxSeconds * VOICEPRINT_MODEL.sampleRate);
   const spoken = new Map<UtteranceId, Pcm[]>();
@@ -84,7 +97,7 @@ export function createVoiceJudge(
   return {
     /** A conversation is starting with this interpreter voice: start loading the model. */
     connected(voiceName: string) {
-      if (voiceName !== interpreterVoice) interpreter = [];
+      if (voiceName !== interpreterVoice) interpreter = prints.get(voiceName).slice(0, INTERPRETER_PRINT.clips);
       interpreterVoice = voiceName;
       if (voice.available) voice.load().catch(warn);
     },
@@ -121,7 +134,9 @@ export function createVoiceJudge(
       if (clip === undefined) return;
       const voiceName = interpreterVoice;
       voice.embed(clip).then((embedding) => {
-        if (voiceName === interpreterVoice && learning()) interpreter = [...interpreter, embedding];
+        if (voiceName === undefined || voiceName !== interpreterVoice || !learning()) return;
+        interpreter = [...interpreter, embedding];
+        prints.set(voiceName, interpreter);
       }, warn);
     },
     /** Playback was dropped or the conversation ended. */

@@ -20,7 +20,7 @@ import type { Embedding } from '@/core/voiceprint';
 import type { Services } from '@/services';
 import { ServiceError } from '@/services/types';
 
-import { createVoiceJudge } from './voice';
+import { createVoiceJudge, NO_PRINTS, type InterpreterPrints } from './voice';
 
 export type Runtime = {
   store: Store<Session>;
@@ -43,10 +43,12 @@ export function createRuntime(
   onArchive: (languages: Record<Role, string>, utterances: Utterance[]) => void = () => {},
   /** The owner's enrolled voiceprint, if any (see features/enrolment). Without one only the echo filter uses voices. */
   ownerPrint: () => Embedding | undefined = () => undefined,
+  /** Vorp's own voice as learnt in earlier conversations, per interpreter voice (see ./interpreter-prints.ts). */
+  interpreterPrints: InterpreterPrints = NO_PRINTS,
 ): Runtime {
   const { input, output, translator } = services;
   const store = createStore(initialSession(people, settings));
-  const voice = createVoiceJudge(services.voice, ownerPrint, (event) => dispatch(event));
+  const voice = createVoiceJudge(services.voice, ownerPrint, (event) => dispatch(event), interpreterPrints);
   /** The live microphone-to-translator pipe while the reducer says the microphone is open. */
   let pipe: (() => void) | null = null;
 
