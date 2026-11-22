@@ -527,6 +527,13 @@ describe('echo guard', () => {
     expect(s.utterances[3].status).toBe('translating');
   });
 
+  test('a dropped echo is left out of the archived conversation', () => {
+    const [, log] = run([...speaking, ...said('bonjour a tous comment allez vous', 'fr'), { type: 'stop' }], freshHandsFree());
+    const archived = log.flat().find((e) => e.type === 'archive');
+    expect(archived).toMatchObject({ utterances: [{ id: 'u1' }] });
+    expect(archived?.type === 'archive' && archived.utterances).toHaveLength(1);
+  });
+
   test('real speech during playback is kept', () => {
     const [s] = run([...speaking, ...said('Très bien, et toi ?', 'fr')], freshHandsFree());
     expect(s.utterances[1].status).toBe('translating');

@@ -17,6 +17,11 @@ test('a conversation keeps what was heard, as text', () => {
   expect(asText(c)).toEqual(['Hello / Bonjour']);
 });
 
+test('Vorp hearing itself is not kept', () => {
+  const echo: Utterance = { ...said('bonjour a tous', ''), status: 'failed', error: 'echo' };
+  expect(asText(toConversation('c1', 1, people, [said('Hello', 'Bonjour'), echo]))).toEqual(['Hello / Bonjour']);
+});
+
 test('history is newest first and bounded', () => {
   let list = [toConversation('old', 1, people, [said('a', 'b')])];
   for (let i = 0; i < HISTORY_LIMIT; i++) list = added(list, toConversation(`c${i}`, i, people, [said('a', 'b')]));

@@ -1,7 +1,7 @@
 // Past conversations, on this device only. One owner: this store. Text only; audio is never kept.
 
 import { createStore, type Store } from '@/core/store';
-import type { Participant, Utterance } from '@/core/session';
+import { wasHeard, type Participant, type Utterance } from '@/core/session';
 import type { KeyValueStorage } from '@/services';
 
 export type Line = { speakerId?: string; source: string; translation: string; note?: string };
@@ -28,7 +28,7 @@ export function toConversation(id: string, endedAt: number, participants: readon
     endedAt,
     participants: participants.map((p) => ({ id: p.id, language: p.language })),
     lines: utterances
-      .filter((u) => u.source !== '')
+      .filter(wasHeard)
       .map((u) => ({ speakerId: u.speakerId, source: u.source, translation: u.translation, ...(u.note ? { note: u.note } : {}) })),
     recap: { status: 'none' },
   };

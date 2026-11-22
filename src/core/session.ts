@@ -199,6 +199,11 @@ function words(text: string): string[] {
     .filter(Boolean);
 }
 
+/** Something a participant said: not silence, and not Vorp hearing itself. What a conversation keeps. */
+export function wasHeard(u: Utterance): boolean {
+  return u.source !== '' && u.error !== 'echo';
+}
+
 /** How many finished translations, newest first, the echo guard still compares against. */
 const ECHO_RECENT = 2;
 
@@ -255,7 +260,7 @@ const RELEASE: Effect[] = [{ type: 'stopPlayback' }, { type: 'disconnect' }, { t
  */
 function end(s: Session, connection: 'idle' | 'failed', reason: string, error: SessionError | undefined): Transition {
   const ended: Session = { ...failInFlight(s, reason), connection, error };
-  const heard = ended.utterances.filter((u) => u.source !== '');
+  const heard = ended.utterances.filter(wasHeard);
   const archive: Effect[] = heard.length > 0 ? [{ type: 'archive', participants: s.participants, utterances: heard }] : [];
   return [ended, [...RELEASE, ...archive]];
 }
