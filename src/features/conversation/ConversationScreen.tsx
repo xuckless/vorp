@@ -1,3 +1,6 @@
+// UNREFERENCED since phase 3 (kept as a stub, owner decision 22 November 2026): the React Native
+// stage, replaced by the design's DOM screens in src/features/app. Not rendered anywhere.
+//
 // The stage: one luminous object and plain text. The voice ring with the interpreter's avatar
 // inside it, the caption being spoken under it, and one control per person (you and them). Renders from the
 // session store; local state is only the runtime handle and which overlay is open.
@@ -5,21 +8,18 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Image, StyleSheet, Text, useWindowDimensions, View, type TextStyle } from 'react-native';
 
-import { DEMO_PEOPLE } from '@/config/demo';
 import { languageName } from '@/config/languages';
-import { DEFAULT_SETTINGS } from '@/config/policies';
-import { theirLanguage, type ConnectionStatus, type Role, type Session, type SessionErrorKind, type Utterance } from '@/core/session';
-import { asText, createHistory, toConversation, type History } from '@/features/history/history';
+import { theirLanguage, type ConnectionStatus, type Role, type Session, type SessionErrorKind } from '@/core/session';
+import { toConversation } from '@/features/history/history';
 import { keepSaved } from '@/features/settings/saved';
-import { createDemoServices, createServices, type Services } from '@/services';
 import { Press, transition } from '@/ui/primitives';
 import { AgentAvatar, CaptionTransition, MessageSurface, ThinkingIndicator, VoiceVisualiser, type AgentAvatarState, type VoiceState } from '@/ui/slots';
 import { motion, timing, TOUCH_TARGET, useReducedMotion, useTheme, type Theme } from '@/ui/tokens';
 
 import { HistoryList } from './HistoryList';
 import { LanguagePicker } from './LanguagePicker';
-import { createLevels } from './levels';
-import { createRuntime, type Runtime } from './runtime';
+import { createController } from './controller';
+import type { Runtime } from './runtime';
 import { Settings } from './Settings';
 import { COLUMN_WIDTH } from './Sheet';
 import { captions, spotlight, stageOf, type Stage, type StagePhase } from './stage';
@@ -88,31 +88,6 @@ function useSession(runtime: Runtime): Session {
 
 /** The conversation being read: the live one, or one from history by id. */
 type Reading = { from: 'live' } | { from: 'history'; id: string } | null;
-
-type Controller = { runtime: Runtime; levels: ReturnType<typeof createLevels>; history: History };
-
-function createController(mode: Mode, boot: Boot, onEnded: (id: string) => void): Controller {
-  // The demo ends itself after its last line, which archives it and shows the recap.
-  const services: Services = mode === 'demo' ? createDemoServices(() => runtime.dispatch({ type: 'stop' })) : createServices();
-  // The demo keeps nothing: its history lives only as long as the demo is on screen.
-  const history = mode === 'demo' ? createHistory([], () => {}) : boot.history;
-  const people = mode === 'demo' ? DEMO_PEOPLE : boot.setup.people;
-  const settings = mode === 'demo' ? DEFAULT_SETTINGS : boot.setup.settings;
-
-  const runtime = createRuntime(services, people, settings, (languages: Record<Role, string>, utterances: Utterance[]) => {
-    const now = Date.now();
-    const conversation = toConversation(String(now), now, languages, utterances);
-    history.add(conversation);
-    if (!runtime.store.get().settings.behaviours.includes('recap')) return;
-    history.setRecap(conversation.id, { status: 'writing' });
-    onEnded(conversation.id);
-    services.recap.summarise([...new Set([languages.owner, languages.other].map(languageName))], asText(conversation)).then(
-      (text) => history.setRecap(conversation.id, { status: 'ready', text }),
-      () => history.setRecap(conversation.id, { status: 'failed' }),
-    );
-  }, mode === 'demo' ? undefined : boot.enrolment.ownerPrint);
-  return { runtime, levels: createLevels(services), history };
-}
 
 export function ConversationScreen({ mode, autostart, boot, onMode }: { mode: Mode; autostart: boolean; boot: Boot; onMode: (mode: Mode) => void }) {
   // Which overlay is open: visual-only, so it lives here.

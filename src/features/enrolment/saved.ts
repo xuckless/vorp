@@ -30,3 +30,8 @@ export function parseVoiceprint(raw: string | null): OwnerVoiceprint | undefined
 export function serialiseVoiceprint(print: OwnerVoiceprint): string {
   return JSON.stringify({ embedding: print.embedding, model: print.model, language: print.language, createdAt: print.createdAt });
 }
+
+/** Set once the first-launch voice setup prompt has been answered (set up or "Not now"). */
+export const PROMPTED_KEY = 'vorp.enrolment.prompted.v1';
+
+export const parsePrompted = (raw: string | null): boolean => raw === '1';
