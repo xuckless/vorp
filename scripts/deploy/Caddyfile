@@ -1,0 +1,7 @@
+# Caddy in front of the token server: TLS from Let's Encrypt (the browser microphone needs
+# HTTPS), WebSockets and everything else proxied to Anole on the loopback. Anole trusts the
+# loopback (ANOLE_PROXY_TRUSTED), so rate limits see each client's X-Forwarded-For.
+{$VORP_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8787
+}

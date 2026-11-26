@@ -135,8 +135,10 @@ Verified live on 21 November unless noted. Findings are under "Hands-free turns"
 
 - [x] `expo export` for web; the Anole server serves the static build (`WEB_DIR`) and `/token`
 - [x] Token endpoint: rate limit per client, short expiry, single-session tokens
-- [ ] Spend cap on the Gemini key (Google Cloud console)
-- [ ] GCE instance, domain, TLS certificate, service unit, deploy script
+- [x] Spend cap on the Gemini key (Google Cloud console) (owner)
+- [x] GCE instance (`vorp`, e2-small, Toronto, 34.130.240.148), Caddy for TLS, systemd unit,
+      `bun run deploy` (26 November)
+- [ ] DNS: `vorp.alidirect.dev` A record to 34.130.240.148 in Cloudflare, DNS only (owner)
 - [ ] Native `AudioInput` / `AudioOutput` implementations (voice-communication mode for echo
       cancellation)
 - [ ] Android development build; conversation works on a real phone
@@ -188,8 +190,14 @@ session designs the screens.
 - [x] Product landing page: a standalone static page for GitHub Pages with a "vote for us" link
       kept as one config value (the hackathon has no voting page yet) (`landing/index.html`;
       publishing it, and setting `LANDING_URL`, is the owner's)
-- [ ] Phone test over HTTPS: deploy to Google Compute Engine, maybe behind a Cloudflare tunnel
-      (owner: test later)
+- [x] Deployed to Google Compute Engine behind Caddy (`https://vorp.alidirect.dev` once DNS is set)
+- [x] Landing page published to GitHub Pages (`https://xuckless.github.io/vorp/`, workflow
+      `.github/workflows/pages.yml`); the vote link stays empty until the hackathon has one
+- [x] The demo is pair mode (owner, 26 November): Pair a phone is Start's primary action; their
+      language, detection and solo Start fold under More
+- [x] Booth gate: only devices opened once with `/?host=<HOST_SECRET>` host; anyone else gets the
+      demo-mode page; the server refuses rooms, recaps and tokens without the pass
+- [ ] Phone test over HTTPS on the deployed site
 - [ ] Booth check on two real phones over the venue network
 - [x] By-hand end to end: two headless phones against real Gemini (`bun run e2e:pair`)
 - [ ] By hand on real phones: iPhone sound unlock and "Tap to turn on sound", Wake Lock, a
@@ -212,7 +220,8 @@ Pair mode is the main demo, so its UX gets the most care (owner, 22 November):
 
 ## Booth (Sat 28)
 
-- [ ] QR code to the live URL; a printed one-line instruction
+- [ ] Open `https://vorp.alidirect.dev/?host=<HOST_SECRET>` once on every host device
+      (`.env.deploy` holds the secret)
 - [x] Demo script: two languages, one idiom for a cultural note, a recap at the end
 - [x] Offline plan: headset or directional microphone, push-to-talk mode, a recorded video
 - [ ] Check the key's quota and spend cap in the morning

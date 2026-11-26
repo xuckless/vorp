@@ -7,11 +7,9 @@ import { TOKEN_URL } from './conversation';
 import { INTERPRETER_VOICE } from './voices';
 
 /**
- * Where a guest lands after a session: the product landing page (`landing/index.html`, published
- * on its own). The guest goes to `LANDING_URL?from=session&lang=<their language>`.
- *
- * PLACEHOLDER (owner, 22 November 2026: GitHub Pages or Cloudflare Pages, undecided). Set
- * EXPO_PUBLIC_LANDING_URL, or change this one value, once the page is published.
+ * Where a guest lands after a session: the product landing page (`landing/index.html`, on GitHub
+ * Pages). The guest goes to `LANDING_URL?from=session&lang=<their language>`.
+ * EXPO_PUBLIC_LANDING_URL overrides it.
  */
 export const LANDING_URL = process.env.EXPO_PUBLIC_LANDING_URL ?? 'https://xuckless.github.io/vorp/';
 

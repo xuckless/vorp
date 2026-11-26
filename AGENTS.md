@@ -49,6 +49,7 @@ bun run e2e:pair             # by hand: two headless phones paired by QR against
 bun run smoke:voiceprint     # by hand: the voiceprint model on recorded voices, cosine scores
 bun run voiceprint:assets    # voiceprint runtime into public/voiceprint/ (web and export:web run it)
 bun run export:web           # static web build into dist/
+bun run deploy               # booth build to the GCE VM (--secrets rewrites its env)
 bunx expo install <package>  # add a dependency at the version this Expo SDK expects
 bunx expo-doctor             # check dependency and config health
 bun run token-server         # Anole token server on :8787 (needs Zig 0.17 and GEMINI_API_KEY)
@@ -213,6 +214,32 @@ From the design interview with the owner on 21 November 2026.
 - The token endpoint is public, so it is rate-limited, issues single-session tokens with a short
   expiry, and the key carries a spend cap.
 
+### The booth (owner, 26 November 2026)
+
+- **The demo is pair mode.** Pair a phone is Start's primary action. Their language, detection
+  and solo Start ("Start on this phone") fold under More. History, Settings and the scripted demo
+  stay. 2–4 hosts run their own rooms at once, each one host and one guest, on phones and a
+  tablet in the browser. Visitors scan with their own phones. A laptop shows the landing page.
+- **Booth gate.** With `HOST_SECRET` set, the server's costly routes take Anole's API-key
+  middleware (`X-API-Key`): `/rooms` and `/recap` the secret only, `/token` the secret or the
+  guest key of a room still paired (`rooms.Registry.pairedGuest`). The web build with
+  `EXPO_PUBLIC_HOST_GATE=1` shows the owner's app only on a device opened once with
+  `/?host=<secret>`. The secret is kept on the device (`vorp.host.v1`) and taken out of the address.
+  Anyone else gets the demo-mode page, which links the landing page and the repository and never
+  loads the app chunk. `services/pass.ts` is the one owner of the device's pass.
+- **Limits are booth-sized by default**: tokens 120 a minute, room opens 200 a minute, 50 rooms
+  per client, 100 in all (everyone on the venue Wi-Fi shares one address).
+- **Deploy**: Compute Engine VM `vorp` (project `gen-lang-client-0128333338`, e2-small,
+  `northamerica-northeast2-a`, static IP 34.130.240.148). Caddy terminates TLS for
+  `vorp.alidirect.dev` (Cloudflare DNS, proxy off) and proxies to Anole on the loopback
+  (`ANOLE_PROXY_TRUSTED=loopback`). The server runs as a `Type=notify` systemd unit, files in
+  `scripts/deploy/`. `bun run deploy` builds the gated web export and a ReleaseSafe binary for
+  Debian 12 and installs both. Secrets (`GEMINI_API_KEY` from `.env`, `HOST_SECRET` from
+  `.env.deploy`) go over ssh on stdin into `/etc/vorp/env`.
+- **Landing page** on GitHub Pages (`https://xuckless.github.io/vorp/`, published by
+  `.github/workflows/pages.yml` on changes to `landing/`). The vote link stays empty until the
+  hackathon has a voting page.
+
 ### Gemini Live (docs spike, 21 November 2026)
 
 Read from `aistudio.google.com/docs/live-api` (where `ai.google.dev/gemini-api/docs/live` now
@@ -248,11 +275,11 @@ redirects). The tables live in `src/config` (`models.ts`, `voices.ts`, `language
   **Zig 0.17.0**; Zig 0.16 cannot build Anole. `POST /token` sends `{"uses":1}` and keeps
   Google's expiry defaults, answers `{token, expireTime}` with `Cache-Control: no-store`, and
   allows the dev server's CORS origin. `/token` and `/recap` share a per-client limit
-  (`TOKEN_RATE_LIMIT`, 20 a minute), keyed on the client address. Behind the TLS proxy or load
+  (`TOKEN_RATE_LIMIT`, 120 a minute), keyed on the client address. Behind the TLS proxy or load
   balancer that address is the proxy's unless Anole trusts it: set `ANOLE_PROXY_TRUSTED` (its
   addresses or CIDR ranges) or `ANOLE_DEPLOYMENT=behind_proxy`, and Anole takes the client from
-  `X-Forwarded-For`. Visitors behind one NAT still share a bucket, so raise `TOKEN_RATE_LIMIT`
-  for the booth. Not yet: locking the token to the model (`bidiGenerateContentSetup` /
+  `X-Forwarded-For`. Visitors behind one NAT still share a bucket, hence the booth-sized
+  defaults. Not yet: locking the token to the model (`bidiGenerateContentSetup` /
   `fieldMask`).
 - Platform split: implementations are `*.web.ts` / `*.native.ts`; `tsconfig` sets
   `moduleSuffixes: [".web", ""]` so `tsc` resolves the web file and checks both.
@@ -471,8 +498,8 @@ The client contract is `docs/pairing-protocol.md`; change it with the server.
   away.
 - **Bounds**: 64 KiB frames, 4 KiB text messages, a per-socket relay rate on Anole's memory
   limiter (600 tokens a second, burst 3000, a message costing 1 plus 1 per KiB), 60-minute
-  sockets, `ROOM_RATE_LIMIT` (30 a minute per client, room creation and socket opens),
-  `ROOMS_PER_CLIENT` (10) and `MAX_ROOMS` (100). Ended rooms are remembered about 10 minutes so
+  sockets, `ROOM_RATE_LIMIT` (200 a minute per client, room creation and socket opens),
+  `ROOMS_PER_CLIENT` (50) and `MAX_ROOMS` (100). Ended rooms are remembered about 10 minutes so
   a late scan hears `taken`, `expired` or `host_gone`, at most three per live-room slot.
 - The socket accepts any page origin (`allowed_origins = .any`): it carries no cookies, and the
   code and keys admit it. Anole takes WebSocket upgrade options at compile time, so the runtime
@@ -537,8 +564,8 @@ The client contract is `docs/pairing-protocol.md`; change it with the server.
   only `host_gone`. This phone's own link not coming back (`ended: lost`) is the dropped card with
   Continue: the guest then says goodbye; the host (English) goes to Start with no booth countdown.
   The host's end card with nothing kept says "Nothing was said, so nothing was saved". After the goodbye it
-  goes to `LANDING_URL?from=session&lang=<code>` (`config/pairing.ts`, a placeholder until the
-  owner picks GitHub Pages or Cloudflare Pages; `EXPO_PUBLIC_LANDING_URL` overrides).
+  goes to `LANDING_URL?from=session&lang=<code>` (`config/pairing.ts`, GitHub Pages;
+  `EXPO_PUBLIC_LANDING_URL` overrides).
 - **Light guest page**: Metro puts any module shared by two async chunks into `__common`, which
   every page loads. So everything heavy (the owner's app, the paired conversation view with the
   ring, the Gemini SDK, the gallery) is reached only through one module, `features/app/chunk.ts`:
@@ -553,8 +580,8 @@ The client contract is `docs/pairing-protocol.md`; change it with the server.
   "Couldn't make a code") are English in the screens.
 - **Solo**: a card whose speaker is unknown is the design's untinted `unknown` card and tints
   (400 ms) as the speaker resolves.
-- **Landing page**: `landing/index.html`, standalone, outside the Expo build; published by the
-  owner.
+- **Landing page**: `landing/index.html`, standalone, outside the Expo build; published to
+  GitHub Pages (see "The booth").
 
 ### Conversation
 

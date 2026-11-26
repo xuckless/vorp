@@ -1,0 +1,25 @@
+# The token server under systemd. Anole speaks sd_notify (READY=1 once listening, MAINPID on a
+# zero-downtime restart), so the unit is Type=notify with NotifyAccess=all.
+[Unit]
+Description=Vorp token server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=all
+User=vorp
+WorkingDirectory=/opt/vorp
+# GEMINI_API_KEY and HOST_SECRET; root-only, never in the repository.
+EnvironmentFile=/etc/vorp/env
+Environment=ANOLE_ENV=production PORT=8787 WEB_DIR=/opt/vorp/dist ANOLE_PROXY_TRUSTED=loopback
+ExecStart=/opt/vorp/vorp-token
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
