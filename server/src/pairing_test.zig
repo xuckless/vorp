@@ -24,7 +24,7 @@ const Live = struct {
     app: Server,
     io: std.Io,
 
-    fn run(comptime check: fn (*Live) anyerror!void, limits: struct { rooms_per_client: u32 = 10 }) !void {
+    fn run(comptime check: fn (*Live) anyerror!void, limits: struct { rooms_per_client: u32 = 10, host_secret: ?[]const u8 = null }) !void {
         fake_now.store(t0, .monotonic);
         const cfg: Config = .{
             .gemini_api_key = .init("test-key"),
@@ -32,6 +32,7 @@ const Live = struct {
             .gemini_generate_url = "http://127.0.0.1:1/generate",
             .room_rate_limit = 1000,
             .rooms_per_client = limits.rooms_per_client,
+            .host_secret = if (limits.host_secret) |k| .init(k) else null,
         };
         var live: Live = undefined;
         live.state = .{
@@ -48,7 +49,7 @@ const Live = struct {
         live.limiter = .init(gpa, live.io, .{});
         defer live.limiter.deinit();
         live.state.pairing.limiter = &live.limiter;
-        try app_main.routes(&live.app, cfg, live.limiter.limiter());
+        try app_main.routes(&live.app, &live.state, cfg, live.limiter.limiter());
 
         const Task = struct {
             fn go(l: *Live) !void {
@@ -70,9 +71,14 @@ const Live = struct {
 
     /// `POST /rooms` over the loopback.
     fn createRoom(l: *Live) !Room {
+        return l.createRoomAs(null);
+    }
+
+    /// `POST /rooms` carrying `key` as the booth's pass.
+    fn createRoomAs(l: *Live, key: ?[]const u8) !Room {
         var url_buf: [64]u8 = undefined;
         const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}/rooms", .{l.port()});
-        var res = try anole.client(l.io).fetch(url, .{ .method = .post });
+        var res = try anole.client(l.io).fetch(url, .{ .method = .post, .headers = if (key) |k| &.{.{ "X-API-Key", k }} else &.{} });
         defer res.deinit();
         try std.testing.expectEqual(.created, res.status());
         var arena: std.heap.ArenaAllocator = .init(gpa);
@@ -80,6 +86,15 @@ const Live = struct {
         const body = try res.json(struct { code: []const u8, hostKey: []const u8, expiresAt: i64, expiresIn: i64 }, arena.allocator());
         try std.testing.expectEqual(600, body.expiresIn);
         return .{ .code = body.code[0..22].*, .host_key = body.hostKey[0..22].*, .expires_at = body.expiresAt };
+    }
+
+    /// The status of a bodiless `POST path` carrying `key` (none when null).
+    fn postStatus(l: *Live, path: []const u8, key: ?[]const u8) !anole.http.Status {
+        var url_buf: [96]u8 = undefined;
+        const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}{s}", .{ l.port(), path });
+        var res = try anole.client(l.io).fetch(url, .{ .method = .post, .headers = if (key) |k| &.{.{ "X-API-Key", k }} else &.{}, .body = "{}" });
+        defer res.deinit();
+        return res.status();
     }
 
     fn connect(l: *Live, code: []const u8) !WsClient {
@@ -168,6 +183,30 @@ fn expectError(ws: *WsClient, code: []const u8) !void {
         std.debug.print("expected {s}..., got {s}\n", .{ prefix, msg.data });
         return error.TestUnexpectedResult;
     }
+}
+
+test "with HOST_SECRET only the booth makes rooms and recaps, and a paired guest's key gets tokens until the room ends" {
+    try Live.run(struct {
+        fn check(l: *Live) !void {
+            try std.testing.expectEqual(.unauthorized, try l.postStatus("/rooms", null));
+            try std.testing.expectEqual(.unauthorized, try l.postStatus("/rooms", "guess"));
+            try std.testing.expectEqual(.unauthorized, try l.postStatus("/token", null));
+            // Admitted: Gemini is a closed port in tests, so an admitted token request is a 502.
+            try std.testing.expectEqual(.bad_gateway, try l.postStatus("/token", "booth"));
+
+            const room = try l.createRoomAs("booth");
+            var h, var g, const key = try l.pairKeyed(room);
+            defer h.deinit();
+            defer g.deinit();
+            try std.testing.expectEqual(.bad_gateway, try l.postStatus("/token", &key));
+            try std.testing.expectEqual(.unauthorized, try l.postStatus("/recap", &key));
+            try std.testing.expectEqual(.unauthorized, try l.postStatus("/rooms", &key));
+
+            try g.send(.text, "{\"type\":\"end\"}");
+            try expectText(&h, "{\"type\":\"ended\",\"reason\":\"guest_stopped\"}");
+            try std.testing.expectEqual(.unauthorized, try l.postStatus("/token", &key));
+        }
+    }.check, .{ .host_secret = "booth" });
 }
 
 test "host and guest pair, learn each other's language, and relay captions and audio both ways" {
@@ -432,20 +471,22 @@ test "bounds: an oversized message closes with 1009; a flood is cut and the peer
             defer h.deinit();
             defer g.deinit();
 
-            // 60 KiB chunks cost 61 tokens each against a burst of 3000, on a frozen clock.
+            // 60 KiB chunks cost 61 tokens each against a burst of 3000 refilling at 600 a
+            // second (the limiter's clock is real), so a sender far faster than that is cut
+            // after about fifty; how many exactly depends on speed, so it is not asserted.
             const chunk = try gpa.alloc(u8, 60 * 1024);
             defer gpa.free(chunk);
             @memset(chunk, 0);
             // One at a time: the relay queues at most 1 MiB for a phone that is not reading.
-            for (0..49) |_| {
-                try h.send(.binary, chunk);
+            const cut = for (0..1000) |_| {
+                // A send can fail once the server has cut the host: the guest hears of it next.
+                h.send(.binary, chunk) catch break try g.receive();
                 const msg = try g.receive();
-                try std.testing.expectEqual(.binary, msg.type);
-            }
-            try h.send(.binary, chunk);
-            try expectRefusal(&h, "rate_limited", 4429);
+                if (msg.type != .binary) break msg;
+            } else return error.TestUnexpectedResult;
             // Cut like a dropped connection: the host may rejoin within the minute.
-            try expectText(&g, "{\"type\":\"peer_away\"}");
+            try std.testing.expectEqualStrings("{\"type\":\"peer_away\"}", cut.data);
+            try expectRefusal(&h, "rate_limited", 4429);
             try g.close(.normal, "");
 
             const other = try l.createRoom();
@@ -455,7 +496,14 @@ test "bounds: an oversized message closes with 1009; a flood is cut and the peer
             defer gpa.free(huge);
             @memset(huge, 0);
             try big.send(.binary, huge);
-            try expectClose(&big, 1009);
+            // The server closes with 1009 without reading the rest of the frame; the unread
+            // bytes can turn the close into a TCP reset, which ends the socket all the same.
+            const msg = big.receive() catch |err| switch (err) {
+                error.ConnectionResetByPeer => return,
+                else => return err,
+            };
+            try std.testing.expectEqual(.close, msg.type);
+            try std.testing.expectEqual(1009, @intFromEnum(msg.close_code.?));
         }
     }.check, .{});
 }

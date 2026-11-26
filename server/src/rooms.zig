@@ -382,6 +382,24 @@ pub const Registry = struct {
         return .away;
     }
 
+    /// Whether `digest` is the SHA-256 of the guest key of a room still paired: that guest may
+    /// ask for Live tokens. Every room is looked at, so the time taken says nothing of which.
+    /// A room whose side has been away too long counts as ended (without ending it here: the
+    /// sweep tells its sockets).
+    pub fn pairedGuest(self: *Registry, digest: [32]u8, now: i64) bool {
+        var found = false;
+        var it = self.rooms.valueIterator();
+        while (it.next()) |r| {
+            const lapsed = for (r.sides) |sd| {
+                if (sd.away_since) |since| if (now - since >= self.limits.away_ms) break true;
+            } else false;
+            var d: [32]u8 = undefined;
+            std.crypto.hash.sha2.Sha256.hash(&r.guest_key, &d, .{});
+            if (std.crypto.timing_safe.eql([32]u8, d, digest) and r.phase == .paired and !lapsed) found = true;
+        }
+        return found;
+    }
+
     /// Rooms open or paired: for tests.
     pub fn liveCount(self: *Registry) usize {
         var n: usize = 0;

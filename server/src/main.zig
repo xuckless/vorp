@@ -18,6 +18,8 @@ pub const Config = @import("config.zig").Config;
 pub const pairing = @import("pairing.zig");
 pub const rooms = @import("rooms.zig");
 
+const apikey = anole.auth.apikey;
+
 pub const std_options = anole.std_options;
 pub const panic = anole.panic;
 
@@ -30,6 +32,10 @@ pub const App = struct {
     pairing: pairing.Pairing,
     /// Open when the web build is served; unknown paths then get its index.html.
     web: ?std.Io.Dir = null,
+    /// HOST_SECRET's digest, set by `routes`: the booth devices' pass. Null: no gate.
+    host_digest: ?apikey.Digest = null,
+    /// The server's, set by `routes`: the guest lookup takes the pairing lock with it.
+    io: std.Io = undefined,
 
     /// The web build is a single-page app: a path that is no file is one of its routes.
     pub fn notFound(app: *App, req: *anole.Request, res: *anole.Response) !void {
@@ -134,8 +140,41 @@ fn recap(app: *App, req: *anole.Request, res: *anole.Response) !void {
     try res.json(.{ .recap = out.candidates[0].content.parts[0].text });
 }
 
+// ------------------------------------------------------------------ The booth gate
+//
+// With HOST_SECRET set, only the booth's devices are hosts: they send it as `X-API-Key` to make
+// rooms, ask for recaps and get Live tokens. A visitor's phone gets Live tokens with its room's
+// guest key (from `welcome`) while that room is paired. Anole's API-key middleware reads the
+// key and answers 401 without a match.
+
+fn isHost(app: *const App, digest: apikey.Digest) bool {
+    const want = app.host_digest orelse return false;
+    return std.crypto.timing_safe.eql(apikey.Digest, want, digest);
+}
+
+fn hostLookup(ptr: ?*anyopaque, _: std.mem.Allocator, digest: apikey.Digest) !?[]const u8 {
+    const app: *App = @ptrCast(@alignCast(ptr.?));
+    return if (isHost(app, digest)) "host" else null;
+}
+
+fn memberLookup(ptr: ?*anyopaque, _: std.mem.Allocator, digest: apikey.Digest) !?[]const u8 {
+    const app: *App = @ptrCast(@alignCast(ptr.?));
+    if (isHost(app, digest)) return "host";
+    return if (app.pairing.pairedGuest(app.io, digest)) "guest" else null;
+}
+
+/// The routes that cost Gemini usage or make rooms, each behind its middlewares.
+fn costlyRoutes(app: *anole.Server(App), tokens: anytype, recaps: anytype, rooms_made: anytype) void {
+    app.with(tokens).post("/token", token);
+    app.with(recaps).post("/recap", recap);
+    app.with(rooms_made).post("/rooms", pairing.create);
+}
+
 /// Apart from `main` so that src/main_test.zig serves the same routes.
-pub fn routes(app: *anole.Server(App), cfg: Config, limiter: anole.ratelimit.Limiter) !void {
+pub fn routes(app: *anole.Server(App), state: *App, cfg: Config, limiter: anole.ratelimit.Limiter) !void {
+    state.io = app.io();
+    if (cfg.host_secret) |s| state.host_digest = apikey.digest(s.expose());
+
     app.use(anole.middleware.RequestId.init(.{}));
     app.use(anole.observe.AccessLog.init(.{ .exclude = &anole.observe.probe_paths }));
     // `.origin`, not `.origins = &.{origin}`: that array would live on this function's stack,
@@ -144,16 +183,19 @@ pub fn routes(app: *anole.Server(App), cfg: Config, limiter: anole.ratelimit.Lim
     _ = app.health(.{}); // /healthz and /readyz
 
     // /token and /recap are limited: each call costs Gemini usage. Static files are not.
-    const limited = app.with(.{anole.ratelimit.Middleware.init(limiter, .{ .limit = cfg.token_rate_limit })});
-    limited.post("/token", token);
-    limited.post("/recap", recap);
-
     // Pairing: a room per QR code, then a socket each for the host and the guest. Both count
     // against one per-client limit. Any page may open the socket: it carries no cookies, and
     // the code (and the host's key) is what admits it.
-    const pairing_limited = app.with(.{anole.ratelimit.Middleware.init(limiter, .{ .limit = cfg.room_rate_limit })});
-    pairing_limited.post("/rooms", pairing.create);
-    pairing_limited.wsCallbacksWith("/rooms/:code", pairing.Socket, .{
+    const token_limit = anole.ratelimit.Middleware.init(limiter, .{ .limit = cfg.token_rate_limit });
+    const room_limit = anole.ratelimit.Middleware.init(limiter, .{ .limit = cfg.room_rate_limit });
+    if (state.host_digest == null) {
+        costlyRoutes(app, .{token_limit}, .{token_limit}, .{room_limit});
+    } else {
+        const host = apikey.Middleware.init(.{ .ptr = state, .lookup = hostLookup, .never_waits = true });
+        const member = apikey.Middleware.init(.{ .ptr = state, .lookup = memberLookup });
+        costlyRoutes(app, .{ token_limit, member }, .{ token_limit, host }, .{ room_limit, host });
+    }
+    app.with(.{room_limit}).wsCallbacksWith("/rooms/:code", pairing.Socket, .{
         .allowed_origins = .any,
         .max_message_size = pairing.max_message,
         .timeout = .{ .duration = .{ .raw = pairing.socket_lifetime, .clock = .awake } },
@@ -187,6 +229,6 @@ pub fn main(init: std.process.Init) !void {
     var limiter = anole.ratelimit.MemoryLimiter.init(init.gpa, app.io(), .{});
     defer limiter.deinit();
     state.pairing.limiter = &limiter;
-    try routes(&app, cfg, limiter.limiter());
+    try routes(&app, &state, cfg, limiter.limiter());
     try app.run();
 }

@@ -72,6 +72,13 @@ pub const Pairing = struct {
         p.mutex.unlock(io);
     }
 
+    /// Whether `digest` is a paired guest's key (`rooms.Registry.pairedGuest`), now.
+    pub fn pairedGuest(p: *Pairing, io: std.Io, digest: [32]u8) bool {
+        p.lock(io);
+        defer p.unlock(io);
+        return p.registry.pairedGuest(digest, p.clock(io));
+    }
+
     /// Ends rooms whose time ran out (telling whoever is still connected) and forgets old
     /// tombstones. Under the lock.
     fn sweep(p: *Pairing, now: i64) void {

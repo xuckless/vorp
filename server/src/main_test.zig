@@ -44,7 +44,7 @@ const Fixture = struct {
         self.app = try anole.Server(app_main.App).init(std.testing.allocator, .{ .executors = .exact(1), .errors = .json, .proxy = .{ .trusted = trusted } }, &self.state);
         self.limiter = .init(std.testing.allocator, self.app.io(), .{});
         self.state.pairing.limiter = &self.limiter;
-        try app_main.routes(&self.app, cfg, self.limiter.limiter());
+        try app_main.routes(&self.app, &self.state, cfg, self.limiter.limiter());
     }
 
     fn stop(self: *Fixture) void {
