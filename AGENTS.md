@@ -220,7 +220,8 @@ From the design interview with the owner on 21 November 2026.
   and solo Start ("Start on this phone") fold under More. History, Settings and the scripted demo
   stay. 2–4 hosts run their own rooms at once, each one host and one guest, on phones and a
   tablet in the browser. Visitors scan with their own phones. A laptop shows the landing page.
-- **Booth gate.** With `HOST_SECRET` set, the server's costly routes take Anole's API-key
+- **Booth gate.** With `HOST_SECRET` set (one pass, or a comma-separated list of up to 16, one per
+  host so each can be revoked alone), the server's costly routes take Anole's API-key
   middleware (`X-API-Key`): `/rooms` and `/recap` the secret only, `/token` the secret or the
   guest key of a room still paired (`rooms.Registry.pairedGuest`). The web build with
   `EXPO_PUBLIC_HOST_GATE=1` shows the owner's app only on a device opened once with

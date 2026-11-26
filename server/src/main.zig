@@ -32,8 +32,9 @@ pub const App = struct {
     pairing: pairing.Pairing,
     /// Open when the web build is served; unknown paths then get its index.html.
     web: ?std.Io.Dir = null,
-    /// HOST_SECRET's digest, set by `routes`: the booth devices' pass. Null: no gate.
-    host_digest: ?apikey.Digest = null,
+    /// HOST_SECRET's digests, set by `routes`: one pass per booth host. None: no gate.
+    host_digests: [max_hosts]apikey.Digest = undefined,
+    hosts: usize = 0,
     /// The server's, set by `routes`: the guest lookup takes the pairing lock with it.
     io: std.Io = undefined,
 
@@ -142,14 +143,22 @@ fn recap(app: *App, req: *anole.Request, res: *anole.Response) !void {
 
 // ------------------------------------------------------------------ The booth gate
 //
-// With HOST_SECRET set, only the booth's devices are hosts: they send it as `X-API-Key` to make
+// With HOST_SECRET set (one pass or a comma-separated list, one per host, so each can be revoked
+// on its own), only the booth's devices are hosts: they send a pass as `X-API-Key` to make
 // rooms, ask for recaps and get Live tokens. A visitor's phone gets Live tokens with its room's
 // guest key (from `welcome`) while that room is paired. Anole's API-key middleware reads the
 // key and answers 401 without a match.
 
+/// The most passes HOST_SECRET may list.
+pub const max_hosts = 16;
+
+/// Every pass is compared, so the time taken says nothing of which one matched.
 fn isHost(app: *const App, digest: apikey.Digest) bool {
-    const want = app.host_digest orelse return false;
-    return std.crypto.timing_safe.eql(apikey.Digest, want, digest);
+    var found = false;
+    for (app.host_digests[0..app.hosts]) |want| {
+        if (std.crypto.timing_safe.eql(apikey.Digest, want, digest)) found = true;
+    }
+    return found;
 }
 
 fn hostLookup(ptr: ?*anyopaque, _: std.mem.Allocator, digest: apikey.Digest) !?[]const u8 {
@@ -173,7 +182,15 @@ fn costlyRoutes(app: *anole.Server(App), tokens: anytype, recaps: anytype, rooms
 /// Apart from `main` so that src/main_test.zig serves the same routes.
 pub fn routes(app: *anole.Server(App), state: *App, cfg: Config, limiter: anole.ratelimit.Limiter) !void {
     state.io = app.io();
-    if (cfg.host_secret) |s| state.host_digest = apikey.digest(s.expose());
+    state.hosts = 0;
+    if (cfg.host_secret) |s| {
+        var it = std.mem.tokenizeAny(u8, s.expose(), ", ");
+        while (it.next()) |pass| {
+            if (state.hosts == max_hosts) return error.TooManyHostSecrets;
+            state.host_digests[state.hosts] = apikey.digest(pass);
+            state.hosts += 1;
+        }
+    }
 
     app.use(anole.middleware.RequestId.init(.{}));
     app.use(anole.observe.AccessLog.init(.{ .exclude = &anole.observe.probe_paths }));
@@ -188,7 +205,7 @@ pub fn routes(app: *anole.Server(App), state: *App, cfg: Config, limiter: anole.
     // the code (and the host's key) is what admits it.
     const token_limit = anole.ratelimit.Middleware.init(limiter, .{ .limit = cfg.token_rate_limit });
     const room_limit = anole.ratelimit.Middleware.init(limiter, .{ .limit = cfg.room_rate_limit });
-    if (state.host_digest == null) {
+    if (state.hosts == 0) {
         costlyRoutes(app, .{token_limit}, .{token_limit}, .{room_limit});
     } else {
         const host = apikey.Middleware.init(.{ .ptr = state, .lookup = hostLookup, .never_waits = true });

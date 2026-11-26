@@ -12,7 +12,7 @@ pub const Config = struct {
     /// Where recaps are written. Only a test changes it.
     gemini_generate_url: []const u8 = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
     /// HOST_SECRET: what a booth device sends (`X-API-Key`) to make rooms, ask for recaps and
-    /// get Live tokens; a guest gets tokens with its room's key instead. Unset: no gate, any
+    /// get Live tokens; a comma-separated list gives each host its own pass; a guest gets tokens with its room's key instead. Unset: no gate, any
     /// client is a host (development).
     host_secret: ?anole.Secret = null,
     /// TOKEN_RATE_LIMIT: tokens (and recaps) a client address may ask for per minute. Booth-sized:

@@ -185,7 +185,7 @@ fn expectError(ws: *WsClient, code: []const u8) !void {
     }
 }
 
-test "with HOST_SECRET only the booth makes rooms and recaps, and a paired guest's key gets tokens until the room ends" {
+test "with HOST_SECRET only the booth (each host by its own pass) makes rooms and recaps, and a paired guest's key gets tokens until the room ends" {
     try Live.run(struct {
         fn check(l: *Live) !void {
             try std.testing.expectEqual(.unauthorized, try l.postStatus("/rooms", null));
@@ -193,6 +193,9 @@ test "with HOST_SECRET only the booth makes rooms and recaps, and a paired guest
             try std.testing.expectEqual(.unauthorized, try l.postStatus("/token", null));
             // Admitted: Gemini is a closed port in tests, so an admitted token request is a 502.
             try std.testing.expectEqual(.bad_gateway, try l.postStatus("/token", "booth"));
+            // Each host's pass in the list works on its own; the list itself is no pass.
+            try std.testing.expectEqual(.bad_gateway, try l.postStatus("/token", "second"));
+            try std.testing.expectEqual(.unauthorized, try l.postStatus("/token", "booth,second"));
 
             const room = try l.createRoomAs("booth");
             var h, var g, const key = try l.pairKeyed(room);
@@ -206,7 +209,7 @@ test "with HOST_SECRET only the booth makes rooms and recaps, and a paired guest
             try expectText(&h, "{\"type\":\"ended\",\"reason\":\"guest_stopped\"}");
             try std.testing.expectEqual(.unauthorized, try l.postStatus("/token", &key));
         }
-    }.check, .{ .host_secret = "booth" });
+    }.check, .{ .host_secret = "booth, second" });
 }
 
 test "host and guest pair, learn each other's language, and relay captions and audio both ways" {

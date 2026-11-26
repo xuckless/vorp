@@ -138,7 +138,7 @@ Verified live on 21 November unless noted. Findings are under "Hands-free turns"
 - [x] Spend cap on the Gemini key (Google Cloud console) (owner)
 - [x] GCE instance (`vorp`, e2-small, Toronto, 34.130.240.148), Caddy for TLS, systemd unit,
       `bun run deploy` (26 November)
-- [ ] DNS: `vorp.alidirect.dev` A record to 34.130.240.148 in Cloudflare, DNS only (owner)
+- [x] DNS: `vorp.alidirect.dev` A record to 34.130.240.148 in Cloudflare, DNS only; HTTPS live
 - [ ] Native `AudioInput` / `AudioOutput` implementations (voice-communication mode for echo
       cancellation)
 - [ ] Android development build; conversation works on a real phone
@@ -197,6 +197,7 @@ session designs the screens.
       language, detection and solo Start fold under More
 - [x] Booth gate: only devices opened once with `/?host=<HOST_SECRET>` host; anyone else gets the
       demo-mode page; the server refuses rooms, recaps and tokens without the pass
+- [x] Deployed site checked in headless Chrome: demo-mode page, host pass, pairing socket and QR
 - [ ] Phone test over HTTPS on the deployed site
 - [ ] Booth check on two real phones over the venue network
 - [x] By-hand end to end: two headless phones against real Gemini (`bun run e2e:pair`)
@@ -220,8 +221,8 @@ Pair mode is the main demo, so its UX gets the most care (owner, 22 November):
 
 ## Booth (Sat 28)
 
-- [ ] Open `https://vorp.alidirect.dev/?host=<HOST_SECRET>` once on every host device
-      (`.env.deploy` holds the secret)
+- [ ] Open each host's link (`https://vorp.alidirect.dev/?host=<pass>`, one pass per host in
+      `.env.deploy`) once on their device
 - [x] Demo script: two languages, one idiom for a cultural note, a recap at the end
 - [x] Offline plan: headset or directional microphone, push-to-talk mode, a recorded video
 - [ ] Check the key's quota and spend cap in the morning
