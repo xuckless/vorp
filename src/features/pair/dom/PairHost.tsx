@@ -54,7 +54,7 @@ export function PairHost({
 
   return (
     <div className="vp-page vp-pair">
-      <header className="vp-bar">
+      <header className="vp-bar vp-pair-bar">
         <Mark light={light} />
       </header>
       <Presence id={pair.view} exitMs={200} className="vp-pair-main">

@@ -230,11 +230,6 @@ ${[...Array(7)].map((_, i) => `.vp-panel > .vp-row:nth-child(${i + 2}) { animati
 
 /* Talk */
 .vp-talk { position: relative; height: 100%; max-width: 640px; margin: 0 auto; padding: env(safe-area-inset-top) 20px 0; display: flex; flex-direction: column; }
-.vp-pair {
-  display: inline-flex; align-items: center; gap: 10px; height: 40px; padding: 0 16px; border-radius: 14px;
-  font-size: 15px; font-weight: 500; --frost: var(--frost-thin);
-}
-.vp-pair svg { color: var(--mute); }
 .vp-stage { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: 4px; flex: none; }
 .vp-ring { position: relative; }
 .vp-ring canvas { position: absolute; inset: 0; }
@@ -432,7 +427,7 @@ ${[...Array(7)].map((_, i) => `.vp-panel > .vp-row:nth-child(${i + 2}) { animati
 .vp-pair-joined h1 { margin-top: 10px; }
 .vp-pair-lang { font-size: 19px; }
 .vp-pair-lang strong { font-weight: 500; color: var(--them); }
-.vp-guest-bar { justify-content: center; }
+.vp-pair-bar, .vp-guest-bar { justify-content: center; }
 .vp-guest-hero { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; max-width: 420px; }
 .vp-guest-hero h1 { margin-top: 8px; font-size: clamp(26px, 7vw, 34px); }
 .vp-guest-body { max-width: 340px; text-wrap: pretty; }
