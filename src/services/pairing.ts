@@ -1,12 +1,13 @@
 // The pairing link: `POST /rooms` and one WebSocket per phone to `/rooms/<code>` on the token
 // server (docs/pairing-protocol.md). Plain fetch and WebSocket, so one implementation serves web
 // and native. The keys stay in here, in memory: the host's from `create`, the guest's from its
-// welcome. While paired, a socket that closes without `ended` rejoins with the key for as long
+// welcome (which is also the guest's pass for Live tokens, ./pass). While paired, a socket that closes without `ended` rejoins with the key for as long
 // as the server keeps the place (`PAIR_TIMING.rejoinMs`).
 
 import { PAIR_TIMING, ROOMS_URL } from '@/config/pairing';
 import type { EndReason, Outbound, PairRole, PlaybackState, RefusalCode, WireTurnState } from '@/core/pairing';
 
+import { passHeaders, setGuestPass } from './pass';
 import type { PairingLink, PairingLinkEvent } from './types';
 
 /** The contract caps a frame at 64 KiB; audio is split on an even byte boundary. */
@@ -158,6 +159,8 @@ export function createPairingLink(): PairingLink {
       if (event === undefined || event.type === 'pong') return;
       if (event.type === 'keyed') {
         key = event.key;
+        // The guest's key also lets its phone ask for Live tokens while the room is paired.
+        if (role === 'guest') setGuestPass(key);
         event = event.event;
       }
       if (event.type === 'welcome') {
@@ -214,7 +217,7 @@ export function createPairingLink(): PairingLink {
 
   return {
     async create() {
-      const res = await fetch(ROOMS_URL, { method: 'POST' });
+      const res = await fetch(ROOMS_URL, { method: 'POST', headers: passHeaders() });
       if (res.status !== 201) throw new Error(`rooms answered ${res.status}`);
       const body = (await res.json()) as { code?: unknown; hostKey?: unknown; expiresIn?: unknown };
       if (!str(body.code) || !str(body.hostKey)) throw new Error('rooms sent no code');
@@ -226,6 +229,7 @@ export function createPairingLink(): PairingLink {
       finish();
       room = { role, code, language };
       key = undefined;
+      setGuestPass(undefined);
       paired = false;
       over = false;
       connect(false);
@@ -271,6 +275,7 @@ export function createPairingLink(): PairingLink {
       finish();
       room = null;
       hostKey = key = undefined;
+      setGuestPass(undefined);
     },
 
     onEvent(listener) {

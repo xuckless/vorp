@@ -413,6 +413,7 @@ ${[...Array(7)].map((_, i) => `.vp-panel > .vp-row:nth-child(${i + 2}) { animati
 .vp-secondary:hover { --frost: var(--frost-press); }
 .vp-secondary:active { transform: scale(.97); }
 .vp-secondary svg { color: var(--mute); }
+.vp-start-actions .vp-primary { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
 .vp-pair, .vp-guest { text-align: center; }
 .vp-pair-main, .vp-guest-main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-bottom: 6vh; }
 .vp-pair h1, .vp-guest h1 { margin: 0; text-wrap: balance; }
@@ -440,6 +441,10 @@ ${[...Array(7)].map((_, i) => `.vp-panel > .vp-row:nth-child(${i + 2}) { animati
 .vp-fixed-lang { padding: 0 14px; opacity: .7; }
 .vp-guest-actions { width: 100%; margin-top: 10px; }
 .vp-guest-note { font-size: 13.5px; margin-top: 10px; }
+/* The demo-mode page: a loud line, and links that look like the buttons */
+.vp-gate h1 { font-size: clamp(30px, 8.5vw, 44px); line-height: 1.1; text-wrap: balance; }
+.vp-gate .vp-guest-body { font-size: 18px; }
+.vp-link-btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 /* The other phone, in the conversation header */
 .vp-peer { display: inline-flex; align-items: center; gap: 10px; text-align: end; font-size: 14px; font-weight: 500; line-height: 1.2; }
 .vp-peer small { display: block; font-size: 13px; font-weight: 400; }

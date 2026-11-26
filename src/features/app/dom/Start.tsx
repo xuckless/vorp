@@ -1,5 +1,6 @@
 // The start page: settings behind the top-left icon button, the logo, History top right; the
-// interpreter in its halo of thinking orbs, the line, and the languages card with Start. Ported from
+// interpreter in its halo of thinking orbs, the line, and the languages card with Pair a phone (the
+// booth's mode) and, under More, the one-phone setup and Start. Ported from
 // the owner's Vorp design (the-wallpaper-project src/vorp/pages.tsx, Start and SettingsButton).
 
 import { useEffect, useRef, useState } from 'react';
@@ -205,6 +206,8 @@ export function Start({
   onDeleteVoice: () => void;
 }) {
   const blob = useRef<HTMLDivElement>(null);
+  // Visual only: whether the one-phone setup (their language, detection, Start) is showing.
+  const [more, setMore] = useState(false);
   // The ⇄ swap is stubbed out (owner, 22 November 2026): "You" is always the owner's own language.
   // Its design lives in @/ui/dom's Swapper and is gated by SHOW_SWAP; nothing renders it here.
   return (
@@ -235,25 +238,26 @@ export function Start({
               <span>You speak</span>
               <Select label="Your language" value={s.you} options={youChoices} search onChange={(you) => set({ you })} />
             </div>
-            <div className="vp-row">
-              <span>They speak</span>
-              <Select label="Their language" value={s.them} options={themChoices} search onChange={(them) => set({ them })} />
-            </div>
-            <div className="vp-row">
-              <span>
-                Detect their language
-                <small className="vp-mute">Switches to whatever they actually speak.</small>
-              </span>
-              <Toggle label="Detect their language" on={s.detect} onChange={(detect) => set({ detect })} />
-            </div>
+            {more && (
+              <>
+                <div className="vp-row vp-stagger" style={{ animationDelay: '0ms' }}>
+                  <span>They speak</span>
+                  <Select label="Their language" value={s.them} options={themChoices} search onChange={(them) => set({ them })} />
+                </div>
+                <div className="vp-row vp-stagger" style={{ animationDelay: '30ms' }}>
+                  <span>
+                    Detect their language
+                    <small className="vp-mute">Switches to whatever they actually speak.</small>
+                  </span>
+                  <Toggle label="Detect their language" on={s.detect} onChange={(detect) => set({ detect })} />
+                </div>
+              </>
+            )}
           </section>
 
           <div className="vp-start-slot vp-start-actions">
-            <button className="vp-primary" onClick={() => onStart(blob.current?.getBoundingClientRect() ?? null)}>
-              Start
-            </button>
-            {/* Pair by QR: the other person joins on their own phone. */}
-            <button className="vp-secondary vp-frost" onClick={onPair}>
+            {/* Pair by QR, the booth's mode: the other person joins on their own phone and picks their language there. */}
+            <button className="vp-primary" onClick={onPair}>
               <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2.5" y="2.5" width="6" height="6" rx="1.6" />
                 <rect x="11.5" y="2.5" width="6" height="6" rx="1.6" />
@@ -262,6 +266,16 @@ export function Start({
               </svg>
               Pair a phone
             </button>
+            {/* One phone between two people: their language, detection and Start, one tap away. */}
+            {more ? (
+              <button className="vp-secondary vp-frost vp-stagger" style={{ animationDelay: '60ms' }} onClick={() => onStart(blob.current?.getBoundingClientRect() ?? null)}>
+                Start on this phone
+              </button>
+            ) : (
+              <button className="vp-text-btn vp-mute" aria-expanded={false} onClick={() => setMore(true)}>
+                More
+              </button>
+            )}
           </div>
         </div>
       </div>
