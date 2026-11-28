@@ -54,7 +54,11 @@ export function createAudioOutput(): AudioOutput {
   function stop() {
     sources.forEach((s) => {
       s.onended = null;
-      s.stop();
+      try {
+        s.stop();
+      } catch {
+        // Already stopped.
+      }
     });
     sources.clear();
     timers.forEach(clearTimeout);
@@ -76,8 +80,10 @@ export function createAudioOutput(): AudioOutput {
       context = null;
       analyser = null;
       samples = null;
+      blocked = false;
     },
     enqueue(utteranceId, pcm) {
+      if (pcm.length === 0) return;
       const ctx = ensure();
       const buffer = ctx.createBuffer(1, pcm.length, LIVE_AUDIO.outputSampleRate);
       const channel = buffer.getChannelData(0);

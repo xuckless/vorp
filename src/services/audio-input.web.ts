@@ -67,25 +67,30 @@ export function createAudioInput(): AudioInput {
         const denied = name === 'NotAllowedError' || name === 'SecurityError';
         throw new ServiceError(denied ? 'micDenied' : 'mic', err instanceof Error ? err.message : String(err));
       });
-    const url = URL.createObjectURL(new Blob([WORKLET_SOURCE], { type: 'application/javascript' }));
     try {
-      await context.audioWorklet.addModule(url);
-    } finally {
-      URL.revokeObjectURL(url);
+      const url = URL.createObjectURL(new Blob([WORKLET_SOURCE], { type: 'application/javascript' }));
+      try {
+        await context.audioWorklet.addModule(url);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+      const node = new AudioWorkletNode(context, PROCESSOR, {
+        numberOfInputs: 1,
+        numberOfOutputs: 0,
+        channelCount: 1,
+        processorOptions: {
+          targetRate: LIVE_AUDIO.inputSampleRate,
+          chunkSamples: (LIVE_AUDIO.inputSampleRate * LIVE_AUDIO.inputChunkMs) / 1000,
+        },
+      });
+      node.port.onmessage = (e: MessageEvent<Int16Array>) => listeners.forEach((l) => l(e.data));
+      context.createMediaStreamSource(stream).connect(node);
+      await context.resume();
+      return { context, stream, node };
+    } catch (err) {
+      stream.getTracks().forEach((t) => t.stop());
+      throw err;
     }
-    const node = new AudioWorkletNode(context, PROCESSOR, {
-      numberOfInputs: 1,
-      numberOfOutputs: 0,
-      channelCount: 1,
-      processorOptions: {
-        targetRate: LIVE_AUDIO.inputSampleRate,
-        chunkSamples: (LIVE_AUDIO.inputSampleRate * LIVE_AUDIO.inputChunkMs) / 1000,
-      },
-    });
-    node.port.onmessage = (e: MessageEvent<Int16Array>) => listeners.forEach((l) => l(e.data));
-    context.createMediaStreamSource(stream).connect(node);
-    await context.resume();
-    return { context, stream, node };
   }
 
   return {
@@ -103,12 +108,15 @@ export function createAudioInput(): AudioInput {
     close() {
       const current = opening;
       opening = null;
-      void current?.then(({ context, stream, node }) => {
-        node.port.onmessage = null;
-        node.disconnect();
-        stream.getTracks().forEach((t) => t.stop());
-        void context.close();
-      });
+      void current?.then(
+        ({ context, stream, node }) => {
+          node.port.onmessage = null;
+          node.disconnect();
+          stream.getTracks().forEach((t) => t.stop());
+          void context.close();
+        },
+        () => {},
+      );
     },
     onChunk(listener) {
       listeners.add(listener);
