@@ -522,11 +522,13 @@ function step(p: Pairing, e: PairEvent, timing: PairTiming): PairTransition {
       if (p.status !== 'opening' || p.code === undefined) return [p, []];
       return [{ ...p, status: 'connecting' }, [{ type: 'connectRoom', role: 'guest', code: p.code, language: p.setup.language }]];
 
-    case 'audioFailed':
+    case 'audioFailed': {
       if (p.status !== 'opening' && p.status !== 'creating' && p.status !== 'connecting' && p.status !== 'waiting') return [p, []];
       // Host: the code made for this room is let go. Guest: no code was spent.
       // A guest's microphone that will not open is asked for again, whatever the reason.
-      return chain(fail(p, e.kind === 'micDenied' || p.role === 'guest' ? 'micDenied' : 'unavailable'), (x) => [x, p.status === 'opening' ? [] : [{ type: 'endRoom' }]]);
+      const [next, effects] = fail(p, e.kind === 'micDenied' || p.role === 'guest' ? 'micDenied' : 'unavailable');
+      return p.status === 'opening' ? [next, effects] : [next, [{ type: 'endRoom' }, ...effects.filter((x) => x.type !== 'closeRoom')]];
+    }
 
     case 'roomCreated': {
       if (p.status !== 'creating' || e.room !== p.room) return [p, []];
@@ -546,7 +548,7 @@ function step(p: Pairing, e: PairEvent, timing: PairTiming): PairTransition {
 
     case 'welcome':
       if (e.rejoined) {
-        if (p.status !== 'live') return [p, []];
+        if (p.status !== 'live' && p.status !== 'joined') return [p, []];
         return dropUnfinished({ ...p, link: 'up', peer: 'here' });
       }
       if (p.status !== 'connecting') return [p, []];

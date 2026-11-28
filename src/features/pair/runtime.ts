@@ -180,6 +180,7 @@ export function createPairRuntime(services: PairServices, role: PairRole, setup:
       timers.forEach(clearTimeout);
       timers.clear();
       stopPoll();
+      levels.dispose();
       link.close();
       wake.set(false);
     },

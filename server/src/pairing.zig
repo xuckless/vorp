@@ -215,8 +215,8 @@ pub const Socket = struct {
         const cost: u32 = 1 + @as(u32, @intCast(msg.data.len / 1024));
         const allowed = (try p.limiter.?.takeAt(m.relayKey(&key_buf), cost, relay_policy, now)).allowed;
         if (!allowed) {
-            try refuseMember(ws, m, .rate_limited);
-            return leave(p, ws, m, role);
+            leave(p, ws, m, role);
+            return refuseMember(ws, m, .rate_limited);
         }
 
         const kind: Kind = switch (msg.type) {

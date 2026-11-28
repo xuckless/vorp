@@ -262,12 +262,15 @@ export function createPairingLink(): PairingLink {
       write({ type: 'end' });
       // The server answers `ended` and closes; this side lets go now and reports nothing more.
       over = true;
+      setGuestPass(undefined);
       const ws = socket;
       socket = null;
       stopTimers();
       if (ws) {
         ws.onmessage = ws.onclose = ws.onerror = null;
-        setTimeout(() => ws.readyState === WebSocket.OPEN && ws.close(1000), 1000);
+        setTimeout(() => {
+          if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close(1000);
+        }, 1000);
       }
     },
 

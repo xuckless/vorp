@@ -377,6 +377,25 @@ describe('the end', () => {
     expect(back.link).toBe('up');
     expect(back.own.muted).toBe(false);
   });
+
+  test('rejoining during the joined moment still brings the link back up', () => {
+    const joined = hostLive.slice(0, 5); // after peerJoined, before goLive
+    const [away] = run([...joined, { type: 'rejoining' }], host());
+    expect(away.status).toBe('joined');
+    expect(away.link).toBe('rejoining');
+    const [back] = run([{ type: 'welcome', rejoined: true }], away);
+    expect(back.link).toBe('up');
+  });
+
+  test('audio failing while waiting ends the room before closing it', () => {
+    const waiting = hostLive.slice(0, 4); // pair, audioOpened, roomCreated, welcome
+    const [failed, log] = run([...waiting, { type: 'audioFailed', kind: 'micDenied' }], host());
+    expect(failed.status).toBe('failed');
+    expect(failed.problem).toBe('micDenied');
+    const last = types(log[log.length - 1]);
+    expect(last[0]).toBe('endRoom');
+    expect(last).not.toContain('closeRoom');
+  });
 });
 
 test('sound locked by the browser: one tap unlocks it', () => {
