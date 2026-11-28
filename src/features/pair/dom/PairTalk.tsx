@@ -211,7 +211,7 @@ export function PairTalk({
     return () => clearTimeout(r);
   }, []);
   const [pressing, setPressing] = useState(false);
-  const held = pressing || talk.held;
+  const held = (pressing && talk.canHold) || talk.held;
   const press = (e: PointerEvent<HTMLButtonElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
     setPressing(true);
@@ -301,6 +301,7 @@ export function PairTalk({
                   onPointerDown={press}
                   onPointerUp={release}
                   onPointerCancel={release}
+                  onBlur={release}
                   onKeyDown={(e) => {
                     if ((e.key === ' ' || e.key === 'Enter') && !e.repeat && !pressing) {
                       setPressing(true);

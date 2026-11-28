@@ -55,6 +55,9 @@ export function Enrol({
 }) {
   // The first-launch prompt is this page's own step before the app's enrolment starts.
   const [intro, setIntro] = useState(first);
+  // Opening from Settings → Redo starts in 'enrolled'; show "Start reading" until a new reading runs.
+  const [redoing, setRedoing] = useState(enrol.status === 'enrolled');
+  if (redoing && enrol.status !== 'enrolled') setRedoing(false);
   // Leaving mid-way drops the recordings and closes the microphone (only on leaving: the callback's
   // identity may change with every render, and on native it crosses a bridge).
   const cancel = useRef(onCancel);
@@ -63,9 +66,9 @@ export function Enrol({
   }, [onCancel]);
   useEffect(() => () => cancel.current(), []);
 
-  const { status } = enrol;
+  const status = redoing && enrol.status === 'enrolled' ? 'notEnrolled' : enrol.status;
   const shown = intro ? 'intro' : status;
-  const phase = intro ? 'listening' : enrolPhase(enrol);
+  const phase = intro ? 'listening' : enrolPhase({ ...enrol, status });
   const mood: Mood | undefined = status === 'failed' ? 'sad' : status === 'unavailable' ? 'unsure' : undefined;
   const sentence = `Sentence ${enrol.index + 1} of ${enrol.count}`;
   const last = enrol.index + 1 >= enrol.count;

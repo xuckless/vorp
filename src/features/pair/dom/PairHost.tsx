@@ -26,8 +26,12 @@ function useLeft(expiresAt: number | undefined): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (expiresAt === undefined) return;
+    const sync = setTimeout(() => setNow(Date.now()), 0);
     const tick = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(tick);
+    return () => {
+      clearTimeout(sync);
+      clearInterval(tick);
+    };
   }, [expiresAt]);
   return expiresAt === undefined ? 0 : Math.max(0, Math.ceil((expiresAt - now) / 1000));
 }

@@ -44,7 +44,7 @@ export function Talk({
   const root = useRef<HTMLDivElement>(null);
   // Pressed here, so the button answers at once; the session's `held` follows.
   const [pressing, setPressing] = useState(false);
-  const held = pressing || talk.held;
+  const held = (pressing && talk.canHold) || talk.held;
   const live = talk.connection === 'live';
   const problem = talk.problem;
 
@@ -138,6 +138,7 @@ export function Talk({
               onPointerDown={press}
               onPointerUp={release}
               onPointerCancel={release}
+              onBlur={release}
               onKeyDown={(e) => {
                 if ((e.key === ' ' || e.key === 'Enter') && !e.repeat && !pressing) {
                   setPressing(true);
